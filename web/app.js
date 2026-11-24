@@ -1,6 +1,9 @@
 /* Dashboard IUT : interface. Vanilla JS, aucune dépendance. */
 "use strict";
 
+// Un créneau est un DS si son titre contient « DS » (avec numéro éventuel) comme mot entier : pas ADS, DSI, Deds.
+const DS_RE = /(^|[\s\-–(])DS\d*(?=$|[\s\-–:)])/i;
+
 const $ = (s, el = document) => el.querySelector(s);
 const main = $("#main");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -745,6 +748,62 @@ function bindMailConnect(root, after) {
   input.addEventListener("paste", () => setTimeout(() => { if (/[?&]code=/.test(input.value)) submit(); }, 0));
 }
 
+/* ── DS à venir (page d'accueil) ───────────────────────── */
+const isDS = (titre) => DS_RE.test(String(titre || ""));
+
+// « DS - R3.06 Réseaux » -> « R3.06 Réseaux » ; le numéro est gardé : « DS2 - R3.05 Prog » -> « R3.05 Prog (DS2) ».
+function dsTitle(titre) {
+  const m = DS_RE.exec(titre);
+  if (!m) return titre;
+  const num = (m[0].match(/\d+/) || [""])[0];
+  const clean = titre.replace(DS_RE, (_, pre) => pre).replace(/\s{2,}/g, " ").replace(/^[\s\-–:]+|[\s\-–:]+$/g, "");
+  return clean ? (num ? `${clean} (DS${num})` : clean) : titre;
+}
+
+// DS en cours ou à venir, sans doublons (ADE renvoie parfois un créneau par groupe), du plus proche au plus lointain.
+function upcomingDS(evs, now = new Date()) {
+  const seen = new Set();
+  return evs.filter((e) => isDS(e.title) && e.e > now)
+    .sort((a, b) => a.s - b.s)
+    .filter((e) => { const k = `${e.title.trim().toLowerCase()}|${e.start}`; if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+const courseCode = (titre) => ((titre.match(/\b[RS]\d\.\d{2}\b/i) || [])[0] || "").toUpperCase();
+function courseFor(courses, titre) {
+  const code = courseCode(titre);
+  if (!code) return null;
+  return courses.find((c) => (c.short || "").toUpperCase() === code)
+    || courses.find((c) => (c.name.match(/\b[RS]\d\.\d{2}\b/i) || [""])[0].toUpperCase() === code) || null;
+}
+
+function dsRow(e, courses) {
+  const now = new Date();
+  const days = Math.round((startOfDay(e.s) - startOfDay(now)) / DAY);
+  const live = e.s <= now && now < e.e;
+  const urg = days <= 1 ? " late" : days <= 7 ? " soon" : "";
+  const title = dsTitle(e.title);
+  const when = live ? `En cours, jusqu'à ${hm(e.e)}` : days === 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} jours`;
+  const course = courseFor(courses, e.title);
+  const annales = course ? `<a class="btn ghost ds-annales" href="#/ressources?cours=${encodeURIComponent(course.short || courseCode(e.title))}&cat=Examen">Annales</a>` : "";
+  return `<div class="due ds${urg}">
+    <div class="due-date"><b>${e.s.getDate()}</b><span>${esc(fShortMonth.format(e.s))}</span></div>
+    <div><div class="due-name">${esc(title)}</div>
+      <div class="due-meta">${subjTag(subjectOf(title), courseCode(title) || subjectOf(title).name)}<span>${hm(e.s)} – ${hm(e.e)}</span>${e.room ? `<span>${esc(e.room)}</span>` : ""}</div></div>
+    <div class="due-act"><span class="ds-when">${esc(when)}</span>${annales}</div></div>`;
+}
+
+function renderDS(evs) {
+  const all = upcomingDS(evs);
+  const title = `DS à venir${all.length > 3 ? ` · ${all.length}` : ""}`;
+  const head = `<div class="h2"><h2>${title}</h2><a href="#/planning">Planning</a></div>`;
+  const box = $("#home-ds");
+  if (!box) return;
+  if (!all.length) { box.innerHTML = head + '<div class="empty">Aucun DS prévu dans les deux prochains mois.</div>'; return; }
+  const draw = (courses) => { const b = $("#home-ds"); if (b) b.innerHTML = head + `<div class="due-list">${all.slice(0, 3).map((e) => dsRow(e, courses)).join("")}</div>`; };
+  draw([]);
+  resources().then(draw).catch(() => {});   // le bouton « Annales » apparaît si un cours correspond ; sans Moodle, il n'y en a pas
+}
+
 /* ── Vue : Aujourd'hui ─────────────────────────────────── */
 async function viewHome() {
   const today = startOfDay(new Date());
@@ -757,7 +816,10 @@ async function viewHome() {
     <section class="day" id="day"><div class="day-top"><h2>Ta journée</h2><span></span></div>${skel(2)}</section>
     <aside class="panel notes-col" aria-label="Notes"><div class="notes-card" id="home-notes">${skel(5)}</div></aside>
     <div class="cols">
-      <section><div class="h2"><h2>À rendre</h2><a href="#/devoirs">Tous les devoirs</a></div><div id="home-due">${skel(4)}</div></section>
+      <div class="stack">
+        <section><div class="h2"><h2>À rendre</h2><a href="#/devoirs">Tous les devoirs</a></div><div id="home-due">${skel(4)}</div></section>
+        <section id="home-ds"><div class="h2"><h2>DS à venir</h2><a href="#/planning">Planning</a></div>${skel(3)}</section>
+      </div>
       <section><div class="h2"><h2>Mails récents</h2><a href="#/mails">Boîte de réception</a></div><div id="home-mail">${skel(4)}</div></section>
     </div></div>`;
   renderNotesCard();
@@ -782,6 +844,9 @@ async function viewHome() {
       ${todays.length ? strip(todays, today) + `<div class="day-list">${slots(todays)}</div>`
         : `<div class="day-empty">Pas de cours aujourd'hui.${next ? ` Prochain : ${esc(next.title)}, ${relDay(next.s)} à ${hm(next.s)}.` : ""}</div>`}`;
   }).catch((e) => { $("#day").innerHTML = errorBox(e, "Emploi du temps"); });
+
+  planning(today, addDays(today, 60)).then(renderDS)
+    .catch((e) => { $("#home-ds").innerHTML = errorBox(e, "Emploi du temps"); });
 
   assignments().then((list) => {
     const now = Date.now() / 1000;
@@ -921,6 +986,15 @@ async function viewResources() {
   main.innerHTML = `<header class="head"><div><h1>Ressources</h1><p>Tous les documents de tes cours Moodle</p></div></header><div id="res">${skel(8)}</div>`;
   let courses;
   try { courses = await resources(); } catch (e) { $("#res").innerHTML = errorBox(e, "Moodle"); return; }
+  const params = new URLSearchParams(location.hash.split("?")[1] || "");
+  if (params.has("cours") || params.has("cat")) {   // lien « Annales » : #/ressources?cours=R3.06&cat=Examen
+    res.q = "";
+    res.cat = CATS.includes(params.get("cat")) ? params.get("cat") : "Tout";
+    const code = (params.get("cours") || "").toUpperCase();
+    const c = code && (courses.find((x) => (x.short || "").toUpperCase() === code)
+      || courses.find((x) => (x.name.match(/\b[RS]\d\.\d{2}\b/i) || [""])[0].toUpperCase() === code));
+    res.course = c ? c.id : "all";
+  }
   renderResources(courses);
 }
 

@@ -648,3 +648,11 @@ body.modal-open { overflow: hidden; }
   .dp-danger h2 { font-size: 18px; }
   .dp-danger svg { width: 30px; height: 30px; }
 }
+
+/* DS à venir (accueil) */
+.stack { display: grid; gap: 34px; align-content: start; min-width: 0; }
+.due.ds .due-name { font-weight: 600; }
+.due.ds.late .due-date b, .due.ds.late .ds-when { color: var(--red); }
+.due.ds.soon .due-date b, .due.ds.soon .ds-when { color: var(--orange-ink); }
+.ds-when { font-size: 13.5px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.ds-annales { font-size: 13px; padding: 4px 8px; }

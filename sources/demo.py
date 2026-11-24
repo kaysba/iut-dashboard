@@ -27,8 +27,17 @@ PLAN = [  # (jour 0=lundi, h début, durée h, titre, salle, prof)
     (3, 9, 2, "R3.08 Probabilités TD", "Salle 106", "Mme Haddad"),
     (3, 13.5, 3, "R3.07 SQL TP", "Salle TP 3", "M. Morel"),
     (3, 16.75, 1.5, "R3.05 Prog système CM", "Amphi Ouest", "M. Lefèvre"),
-    (4, 8, 1.5, "DS R3.06 Réseaux", "Amphi Est", "M. Garnier"),
     (4, 10, 2, "SAÉ 3.01 Projet", "Salle 118", "M. Lefèvre"),
+]
+
+# Évaluations datées (jours à partir d'aujourd'hui, h début, durée h, titre, salle, prof).
+# Elles couvrent les trois couleurs du bloc « DS à venir » et un faux positif (ADS n'est pas un DS).
+DS_DEMO = [
+    (1, 8, 2, "DS - R3.08 Probabilités", "Amphi Ouest", "Mme Haddad"),
+    (5, 9, 1.5, "DS - R3.06 Architecture des réseaux", "Amphi Est", "M. Garnier"),
+    (16, 14, 2, "DS - R3.01 Développement web", "Amphi Est", "Mme Rossi"),
+    (30, 8, 2, "DS2 - R3.05 Programmation système", "Amphi Ouest", "M. Lefèvre"),
+    (3, 14, 1, "Réunion ADS projet", "Salle 118", "M. Lefèvre"),
 ]
 
 
@@ -49,6 +58,18 @@ def events(start, end):
                             "teacher": prof, "groups": ["BUT2 Info", "Groupe 2"],
                             "start": s.isoformat(), "end": e.isoformat()})
         d += dt.timedelta(days=1)
+    today = dt.date.today()
+    for off, h, dur, title, room, prof in DS_DEMO:
+        day = today + dt.timedelta(days=off)
+        if not start <= day <= end:
+            continue
+        s = dt.datetime.combine(day, dt.time(int(h), int(round((h % 1) * 60)))).astimezone()
+        etype = "Examen" if title.lower().startswith("ds") else "Autre"
+        # ADE renvoie parfois un créneau par groupe : on en met deux pour le premier DS.
+        for g in (["BUT2 Info", "Groupe 1"], ["BUT2 Info", "Groupe 2"]) if off == 5 else (["BUT2 Info"],):
+            out.append({"uid": f"{day}{title}{g[-1]}", "title": title, "type": etype, "room": room, "teacher": prof,
+                        "groups": g, "start": s.isoformat(), "end": (s + dt.timedelta(hours=dur)).isoformat()})
+    out.sort(key=lambda e: e["start"])
     return out
 
 
@@ -79,6 +100,7 @@ def resources():
                                    ("TP4 – Autoloader et Composer", "pdf", "TP", 3), ("Squelette du TP4", "archive", "TP", 3)]),
             ("PDO et sécurité", [("CM3 – PDO, requêtes préparées", "slides", "CM", 16), ("TP3 – Injection SQL et XSS", "pdf", "TP", 15),
                                  ("Documentation PHP", "link", "Autre", 40)]),
+            ("Examens", [("Annales DS 2025 – Développement web", "pdf", "Examen", 18)]),
         ],
         "R3.05": [
             ("Processus", [("CM1 – fork, exec, wait", "slides", "CM", 30), ("TD1 – Arbres de processus", "pdf", "TD", 29),
@@ -89,7 +111,8 @@ def resources():
                                          ("TD5 – Requêtes sur la base Ventes", "pdf", "TD", 11),
                                          ("Script de création de la base", "code", "TD", 11)])],
         "R3.08": [("Lois discrètes", [("Poly de cours chapitre 3", "pdf", "CM", 20), ("Feuille de TD 3", "pdf", "TD", 19),
-                                      ("Feuille de TD 3 – Corrigé", "pdf", "TD", 10)])],
+                                      ("Feuille de TD 3 – Corrigé", "pdf", "TD", 10)]),
+                  ("Examens", [("Annales DS 2025 – Probabilités", "pdf", "Examen", 12), ("Annales DS 2024 + corrigé", "pdf", "Examen", 12)])],
         "SAÉ 3.01": [("Ressources du projet", [("Sujet de la SAÉ", "pdf", "Autre", 50), ("Grille d'évaluation", "sheet", "Examen", 50),
                                                ("Dépôt Git du groupe", "link", "Autre", 45)])],
         "R3.12": [("Unit 4 – Job interviews", [("Vocabulary list", "doc", "Autre", 14), ("Mock interview questions", "pdf", "TD", 13)])],
