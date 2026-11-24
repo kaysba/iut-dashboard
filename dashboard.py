@@ -40,7 +40,7 @@ cache = TTLCache()
 
 SESSION = {"ok": False}   # connecté pendant cette exécution ?
 REMEMBER_FILE = "remember.json"
-SESSION_FILES = ("moodle_token.json", "outlook_token.json", REMEMBER_FILE)
+SESSION_FILES = ("moodle_token.json", "outlook_token.json", REMEMBER_FILE, "assign_status.json")
 
 
 def logged_in():

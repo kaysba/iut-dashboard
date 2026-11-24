@@ -3,6 +3,7 @@ import base64
 import html
 import random
 import re
+import sys
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,8 @@ from .common import (Session, SourceError, delete_secret, http_post_json,
                      load_secret, parse_html, save_secret)
 
 TOKEN_FILE = "moodle_token.json"
+STATUS_FILE = "assign_status.json"
+EVENTS_PAGE = 50
 
 
 class Moodle:
@@ -22,11 +25,13 @@ class Moodle:
         self.hidden = [h.lower() for h in getattr(cfg, "COURS_MASQUES", [])]
         self._token = None
         self._site = None
+        self._calendar_ok = None
 
     def set_credentials(self, login, password):
         self.login, self.password = login, password
         self._token = None
         self._site = None
+        self._calendar_ok = None
 
     # ── Authentification ────────────────────────────────────
     def token(self):
@@ -200,22 +205,73 @@ class Moodle:
                     "submitUrl": f"{self.base}/mod/assign/view.php?id={a['cmid']}&action=editsubmission",
                 })
 
-        def status(item):
+        events = self._actionable_assignments(now)
+        cached = load_secret(STATUS_FILE) or {}
+        new_cache = {}
+
+        def fetch(item):
+            """Statut réel via mod_assign_get_submission_status."""
             try:
                 st = self.call("mod_assign_get_submission_status", assignid=item["id"])
             except SourceError:
                 item["status"] = "inconnu"
-                return item
+                item["graded"] = False
+                return
             last = st.get("lastattempt", {}) or {}
             sub = last.get("submission") or last.get("teamsubmission") or {}
             item["status"] = {"submitted": "rendu", "draft": "brouillon"}.get(sub.get("status"), "a_rendre")
             item["graded"] = last.get("gradingstatus") == "graded"
-            return item
+
+        def resolve(item):
+            key = str(item["id"])
+            if events is not None and item["id"] in events:
+                # Encore à rendre (ou brouillon) : on ne vérifie que si l'échéance est proche.
+                item["status"], item["graded"] = "a_rendre", False
+                if item["due"] and item["due"] <= now + 7 * 86400:
+                    fetch(item)
+                return
+            if key in cached:
+                item["status"], item["graded"] = "rendu", bool(cached[key].get("graded"))
+                return
+            fetch(item)
+            if item["status"] == "rendu":
+                new_cache[key] = {"graded": item["graded"]}
 
         with ThreadPoolExecutor(max_workers=6) as pool:
-            items = list(pool.map(status, items))
+            list(pool.map(resolve, items))
+        if new_cache:
+            save_secret(STATUS_FILE, {**cached, **new_cache})
         items.sort(key=lambda i: (i["due"] == 0, i["due"]))
         return items
+
+    def _actionable_assignments(self, now):
+        """Ids des devoirs encore à rendre d'après la Chronologie de Moodle.
+        Renvoie None si le service mobile refuse cette fonction (repli sur l'ancienne méthode)."""
+        if self._calendar_ok is False:
+            return None
+        ids, after = set(), None
+        try:
+            for _ in range(20):
+                params = {"timesortfrom": int(now - 45 * 86400), "limitnum": EVENTS_PAGE}
+                if after:
+                    params["aftereventid"] = after
+                resp = self.call("core_calendar_get_action_events_by_timesort", **params)
+                events = resp.get("events", []) if isinstance(resp, dict) else []
+                for e in events:
+                    if e.get("modulename") == "assign" and (e.get("action") or {}).get("actionable"):
+                        ids.add(e.get("instance"))
+                after = resp.get("lastid") or (events[-1]["id"] if events else None)
+                if len(events) < EVENTS_PAGE or not after:
+                    break
+        except SourceError as e:
+            if str(e) == "SESSION_EXPIRED":
+                raise
+            print(f"[moodle] Avertissement : calendrier indisponible ({e}). "
+                  "Retour à un appel par devoir.", file=sys.stderr)
+            self._calendar_ok = False
+            return None
+        self._calendar_ok = True
+        return ids
 
     def file_url(self, fileurl):
         """URL de téléchargement authentifiée, uniquement pour ce Moodle."""
