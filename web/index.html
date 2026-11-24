@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tableau de bord IUT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231B5FD6'/%3E%3Crect x='8' y='19' width='16' height='4' rx='2' fill='%23F98012'/%3E%3Crect x='8' y='9' width='10' height='4' rx='2' fill='white'/%3E%3C/svg%3E">
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <a class="brand" href="#/">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+        <span>IUT Nice<small>BUT Informatique</small></span>
+      </a>
+      <nav class="nav" aria-label="Navigation principale">
+        <a href="#/" data-route="home"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z"/></svg>Aujourd'hui</a>
+        <a href="#/planning" data-route="planning"><svg viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg>Planning</a>
+        <a href="#/ressources" data-route="ressources"><svg viewBox="0 0 24 24"><path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v8.3A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/></svg>Ressources</a>
+        <a href="#/devoirs" data-route="devoirs"><svg viewBox="0 0 24 24"><path d="M7 4.5h10a1.5 1.5 0 0 1 1.5 1.5v13.5l-3-1.8-3.5 1.8-3.5-1.8-3 1.8V6A1.5 1.5 0 0 1 7 4.5z"/><path d="m9 11 2 2 4-4"/></svg>Devoirs<b class="count" id="nav-devoirs"></b></a>
+        <a href="#/mails" data-route="mails"><svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>Mails<b class="count" id="nav-mails"></b></a>
+      </nav>
+      <div class="side-foot">
+        <ul class="sources" id="sources" aria-label="État des connexions"></ul>
+        <button class="refresh" id="refresh" type="button">
+          <svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></svg>
+          <span>Actualiser</span>
+        </button>
+        <button class="btn ghost" id="logout" type="button">Se déconnecter</button>
+      </div>
+    </aside>
+    <main class="main" id="main" tabindex="-1"></main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
