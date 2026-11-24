@@ -114,7 +114,7 @@ class Outlook:
             unread_total = len(unseen[0].split()) if unseen and unseen[0] else 0
             out = []
             if uids:
-                _, rows = imap.uid("fetch", b",".join(uids), "(FLAGS BODY.PEEK[]<0.24000>)")
+                _, rows = imap.uid("fetch", b",".join(uids), "(FLAGS BODY.PEEK[]<0.60000>)")
                 for i in range(0, len(rows)):
                     row = rows[i]
                     if not isinstance(row, tuple):
@@ -166,6 +166,32 @@ def _snippet(msg):
     return text[:220]
 
 
+def _body(msg):
+    """Texte complet du mail (sans HTML), avec les retours à la ligne."""
+    plain, htm = None, None
+    for part in msg.walk():
+        ctype = part.get_content_type()
+        if part.get_content_maintype() == "multipart" or part.get_filename():
+            continue
+        try:
+            payload = part.get_payload(decode=True) or b""
+            text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        except Exception:
+            continue
+        if ctype == "text/plain" and plain is None:
+            plain = text
+        elif ctype == "text/html" and htm is None:
+            htm = text
+    text = plain
+    if not text and htm:
+        text = re.sub(r"(?is)<(style|script|head).*?</\1>", " ", htm)
+        text = re.sub(r"(?i)<br\s*/?>|</(p|div|tr|li|h\d)>", "\n", text)
+        text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+    text = (text or "").replace("\r", "").replace("\xa0", " ")
+    text = "\n".join(re.sub(r"[ \t]+", " ", l).strip() for l in text.split("\n"))
+    return re.sub(r"\n{3,}", "\n\n", text).strip()[:20000]
+
+
 def _shape(meta, raw):
     msg = email.message_from_bytes(raw)
     name, addr = email.utils.parseaddr(_decode(msg.get("From")))
@@ -180,5 +206,6 @@ def _shape(meta, raw):
         "date": date,
         "unread": b"\\Seen" not in meta,
         "snippet": _snippet(msg),
+        "body": _body(msg),
         "attachment": has_attach,
     }

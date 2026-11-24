@@ -6,6 +6,7 @@ const main = $("#main");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 const ICON = {
+  close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   ext: '<svg viewBox="0 0 24 24"><path d="M13.5 5.5H18.5V10.5M18 6l-7.5 7.5M16 13.5V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V9.5A1.5 1.5 0 0 1 6 8h4.5"/></svg>',
   dl: '<svg viewBox="0 0 24 24"><path d="M12 4.5v10M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>',
   clip: '<svg viewBox="0 0 24 24"><path d="m19 11.5-6.8 6.8a4.2 4.2 0 0 1-6-6l7.2-7.1a2.8 2.8 0 0 1 4 4l-7.1 7.1a1.4 1.4 0 0 1-2-2l6.4-6.4"/></svg>',
@@ -241,12 +242,45 @@ function dueRow(a) {
     <div class="due-act">${action}</div></div>`;
 }
 
+const mailStore = [];
 function mailRow(m) {
-  return `<a class="mail${m.unread ? " unread" : ""}" href="${esc(window.__webmail || "https://outlook.office.com/mail/inbox")}" target="_blank" rel="noopener">
+  const i = mailStore.push(m) - 1;
+  return `<button type="button" class="mail${m.unread ? " unread" : ""}" data-mail="${i}">
     <i class="ud"></i><span class="mail-from">${esc(m.from)}</span><span class="mail-time">${esc(ago(m.date))}</span>
     <span class="mail-subj">${esc(m.subject)}${m.attachment ? ICON.clip : ""}</span>
-    <span class="mail-snip">${esc(m.snippet)}</span></a>`;
+    <span class="mail-snip">${esc(m.snippet)}</span></button>`;
 }
+
+function openMail(m) {
+  closeMail();
+  const url = esc(window.__webmail || "https://outlook.office.com/mail/inbox");
+  const d = m.date ? new Date(m.date * 1000) : null;
+  const el = document.createElement("div");
+  el.className = "modal-back";
+  el.id = "mail-modal";
+  el.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mail-title">
+    <header class="modal-head">
+      <div><h2 id="mail-title">${esc(m.subject)}</h2>
+        <p><b>${esc(m.from)}</b>${m.fromAddr && m.fromAddr !== m.from ? ` &lt;${esc(m.fromAddr)}&gt;` : ""}${d ? ` · ${esc(fDate.format(d))}, ${hm(d)}` : ""}${m.attachment ? " · pièce jointe" : ""}</p></div>
+      <a class="btn icon" href="${url}" target="_blank" rel="noopener" title="Ouvrir sur Outlook" aria-label="Ouvrir sur Outlook">${ICON.ext}</a>
+      <button class="btn icon" type="button" id="mail-close" aria-label="Fermer">${ICON.close}</button>
+    </header>
+    <div class="modal-body">${esc(m.body || m.snippet || "(message vide)")}</div></div>`;
+  el.addEventListener("click", (ev) => { if (ev.target === el) closeMail(); });
+  document.body.appendChild(el);
+  $("#mail-close", el).addEventListener("click", closeMail);
+  $("#mail-close", el).focus();
+  document.body.classList.add("modal-open");
+}
+function closeMail() {
+  $("#mail-modal")?.remove();
+  document.body.classList.remove("modal-open");
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMail(); });
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-mail]");
+  if (b) openMail(mailStore[+b.dataset.mail]);
+});
 
 function mailConnect() {
   return `<div class="panel connect">

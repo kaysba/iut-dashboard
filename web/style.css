@@ -211,6 +211,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .mail {
   display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 4px 12px; padding: 12px 10px; margin: 0 -10px;
   border-radius: var(--r-md);
+  width: calc(100% + 20px); text-align: left; font: inherit; color: inherit; background: transparent; border: 0; cursor: pointer;
 }
 .mail:hover { background: var(--surface); }
 .mail .ud { width: 7px; height: 7px; margin-top: 8px; border-radius: 50%; }
@@ -405,3 +406,16 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .side-foot .btn.ghost:hover { color: var(--ink); background: var(--paper); }
 .login .remember { display: flex; align-items: center; gap: 9px; font-weight: 400; margin: 2px 0 6px; cursor: pointer; }
 .login .remember input { width: 17px; height: 17px; margin: 0; padding: 0; accent-color: var(--blue); }
+
+/* ── Mail en grand ──────────────────────────────────────── */
+.modal-back { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(15, 30, 51, .45); }
+.modal { width: min(720px, 100%); max-height: min(82vh, 760px); display: flex; flex-direction: column; background: var(--surface); border-radius: var(--r-lg); box-shadow: 0 20px 60px rgba(15, 30, 51, .3); }
+.modal-head { display: flex; gap: 8px; align-items: flex-start; padding: 20px 20px 14px; border-bottom: 1px solid var(--line-2); }
+.modal-head > div { flex: 1; min-width: 0; }
+.modal-head h2 { margin: 0 0 4px; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.modal-head p { margin: 0; color: var(--muted); font-size: 13.5px; overflow-wrap: anywhere; }
+.modal-head p b { color: var(--ink); font-weight: 600; }
+.modal-head .btn.icon { padding: 7px; }
+.modal-head .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.modal-body { padding: 18px 20px 22px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.6; color: var(--ink-2); }
+body.modal-open { overflow: hidden; }

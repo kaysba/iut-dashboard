@@ -136,5 +136,7 @@ def mails():
         ("Service des sports", "Tournoi de futsal inter-IUT", "Les inscriptions pour le tournoi du 10 décembre sont ouvertes. Équipes de 5 joueurs", 75, False, False),
     ]
     msgs = [{"from": f, "fromAddr": "", "subject": s, "snippet": sn, "date": now - hrs * 3600, "unread": u,
-             "attachment": a} for (f, s, sn, hrs, u, a) in rows]
+             "attachment": a,
+             "body": sn + "…\n\nCeci est un mail de démonstration : le texte complet d'un vrai mail s'afficherait ici.\n\nCordialement,\n" + f}
+            for (f, s, sn, hrs, u, a) in rows]
     return {"unread": 3, "messages": msgs, "webmail": "https://outlook.office.com/mail/inbox"}
