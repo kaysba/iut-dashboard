@@ -399,9 +399,6 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .login .msg { margin: 0 0 14px; padding: 9px 12px; border-radius: var(--r-sm); background: #FFF8F7; border: 1px solid #F2C7C3; color: #8A2620; font-size: 14px; }
 .login .msg:empty { display: none; }
 .connect .btn.primary { margin-bottom: 4px; }
-.connect details { margin-top: 18px; border-top: 1px solid var(--line-2); padding-top: 14px; }
-.connect summary { cursor: pointer; color: var(--blue); font-weight: 500; font-size: 14px; }
-.connect details ol { margin-top: 12px; }
 .side-foot .btn.ghost { color: var(--muted); justify-content: center; }
 .side-foot .btn.ghost:hover { color: var(--ink); background: var(--paper); }
 .login .remember { display: flex; align-items: center; gap: 9px; font-weight: 400; margin: 2px 0 6px; cursor: pointer; }

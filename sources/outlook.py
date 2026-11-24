@@ -28,8 +28,7 @@ class Outlook:
         self.count = cfg.MAIL_NOMBRE
         self.client_id = cfg.MS_CLIENT_ID
         self.tenant = cfg.MS_TENANT
-        self.redirect_manual = cfg.MS_REDIRECT_URI
-        self.redirect_auto = f"http://localhost:{cfg.PORT}/oauth/callback"
+        self.redirect_uri = cfg.MS_REDIRECT_URI
         self._pending = None  # (state, verifier, redirect_uri)
 
     @property
@@ -40,14 +39,13 @@ class Outlook:
         return bool(load_secret(TOKEN_FILE))
 
     # ── Connexion (une fois) ────────────────────────────────
-    def auth_url(self, manual=True):
-        redirect = self.redirect_manual if manual else self.redirect_auto
+    def auth_url(self):
         verifier = secrets.token_urlsafe(64)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         state = secrets.token_urlsafe(16)
-        self._pending = (state, verifier, redirect)
+        self._pending = (state, verifier, self.redirect_uri)
         q = {
-            "client_id": self.client_id, "response_type": "code", "redirect_uri": redirect,
+            "client_id": self.client_id, "response_type": "code", "redirect_uri": self.redirect_uri,
             "response_mode": "query", "scope": SCOPE, "state": state, "login_hint": self.address,
             "code_challenge": challenge, "code_challenge_method": "S256", "prompt": "select_account",
         }

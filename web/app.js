@@ -304,7 +304,7 @@ function bindMailConnect(root, after) {
   const form = $("#mail-form", root);
   const input = form.url;
   login.addEventListener("click", async () => {
-    const r = await fetch("/api/mail/auth-url?manual=1").then((x) => x.json());
+    const r = await fetch("/api/mail/auth-url").then((x) => x.json());
     window.open(r.url, "_blank", "noopener");
     input.focus();
   });

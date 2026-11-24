@@ -220,9 +220,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path in ROUTES:
                 return self._json(ROUTES[url.path](q, force))
             if url.path == "/api/mail/auth-url":
-                return self._json({"url": outlook.auth_url(manual=True)})
-            if url.path == "/oauth/callback":
-                return self._oauth_callback()
+                return self._json({"url": outlook.auth_url()})
             if url.path == "/api/file":
                 return self._file(q.get("u", [""])[0])
         except Exception as e:  # noqa: BLE001
@@ -256,25 +254,6 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             return self._error(e)
         self.send_error(404)
-
-    def _oauth_callback(self):
-        try:
-            outlook.finish_auth(self.path)
-            cache.clear()
-        except Exception as e:  # noqa: BLE001
-            import html as _h
-            body = ("<meta charset=utf-8><body style='font:16px system-ui;max-width:520px;margin:12vh auto'>"
-                    f"<h2>Connexion Outlook impossible</h2><p>{_h.escape(str(e))}</p>"
-                    "<p><a href='/#/mails'>Retour au dashboard</a></p>").encode()
-            self.send_response(400)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        self.send_response(302)
-        self.send_header("Location", "/#/mails")
-        self.end_headers()
 
     def _file(self, fileurl):
         url = moodle.file_url(fileurl)
