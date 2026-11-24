@@ -147,6 +147,41 @@ function badges() {
   }).catch(() => {});
 }
 
+/* ── Couleurs par matière ──────────────────────────────── */
+// Premier motif qui correspond (sans accents ni majuscules) : l'ordre compte.
+const SUBJECTS = [
+  { re: /\bsae\b/, name: "SAÉ", color: "#8A94A3" },
+  { re: /\bsql\b|base.? de donnee|\bbdd\b/, name: "SQL", color: "#EF8A8A" },
+  { re: /qualite/, name: "Qualité de dev", color: "#EB1E8C" },
+  { re: /efficace/, name: "Dev efficace", color: "#1FD655" },
+  { re: /systeme/, name: "Prog système", color: "#F28A1E" },
+  { re: /\bweb\b/, name: "Dev web", color: "#F2C500" },
+  { re: /communication/, name: "Communication pro", color: "#5A6B2A" },
+  { re: /\bdroit\b/, name: "Droit", color: "#2F6FE0" },
+  { re: /proba|statist/, name: "Probabilités", color: "#8ED381" },
+  { re: /manag|gestion/, name: "Management", color: "#8B4FD6" },
+  { re: /anglais|english/, name: "Anglais", color: "#F6A9CB" },
+  { re: /reseau/, name: "Réseaux", color: "#12AEC4" },
+  { re: /math|graphe|algebre/, name: "Maths", color: "#4C5BD4" },
+  { re: /cyber|securite/, name: "Sécurité", color: "#8D6A4F" },
+  { re: /donnee|\bia\b|intelligence/, name: "Données / IA", color: "#2A9D8F" },
+  { re: /objet|poo|java\b/, name: "Objet", color: "#C0527A" },
+  { re: /portfolio|ppp|projet pers|stage/, name: "Projet pro", color: "#6C7A89" },
+];
+const FALLBACK_COLORS = ["#B08968", "#6D9DC5", "#A3A847", "#C77DFF", "#43AA8B", "#E07A5F"];
+const norm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+function subjectOf(...texts) {
+  const t = norm(texts.join(" "));
+  const hit = SUBJECTS.find((x) => x.re.test(t));
+  if (hit) return hit;
+  const code = (t.match(/\br\d\.\d+/) || [t])[0];
+  let h = 0;
+  for (const c of code) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return { name: "", color: FALLBACK_COLORS[h % FALLBACK_COLORS.length] };
+}
+const subjStyle = (sub) => `--sc:${sub.color}`;
+const subjTag = (sub, label) => `<span class="tag subj" style="${subjStyle(sub)}">${esc(label || sub.name)}</span>`;
+
 /* ── Composants ────────────────────────────────────────── */
 function evMeta(ev) {
   return [ev.room, ev.teacher].filter(Boolean).join(", ");
@@ -168,8 +203,8 @@ function strip(events, day) {
     ? `<span style="left:${(i / (to - from)) * 100}%">${from + i}h</span>` : "").join("");
   const evs = events.map((e) => {
     const past = e.e < now, live = e.s <= now && now < e.e;
-    return `<div class="strip-ev ev-${e.type}${past ? " past" : ""}${live ? " now" : ""}"
-      style="left:calc(${pos(e.s)}% + 2px);width:calc(${pos(e.e) - pos(e.s)}% - 4px)"
+    return `<div class="strip-ev subj${past ? " past" : ""}${live ? " now" : ""}"
+      style="${subjStyle(subjectOf(e.title))};left:calc(${pos(e.s)}% + 2px);width:calc(${pos(e.e) - pos(e.s)}% - 4px)"
       title="${esc(`${e.title}\n${hm(e.s)} – ${hm(e.e)}\n${evMeta(e)}`)}">
       <span class="ti">${esc(e.title)}</span><span class="me">${hm(e.s)}, ${esc(e.room || "salle ?")}</span></div>`;
   }).join("");
@@ -182,7 +217,7 @@ function slots(events) {
   return events.map((e) => `<div class="slot${e.e < now ? " past" : ""}">
     <time>${hm(e.s)} – ${hm(e.e)}</time>
     <div><div class="ti">${esc(e.title)}</div><div class="me">${esc(evMeta(e) || "Salle non indiquée")}</div></div>
-    <span class="tag t-${e.type}">${e.type === "Autre" ? "Cours" : e.type}</span></div>`).join("");
+    <span class="tags"><span class="tag subj" style="${subjStyle(subjectOf(e.title))}">${e.type === "Autre" ? "Cours" : e.type}</span></span></div>`).join("");
 }
 
 function dueRow(a) {
@@ -202,7 +237,7 @@ function dueRow(a) {
   return `<div class="due${done ? " done" : late ? " late" : soon ? " soon" : ""}">
     <div class="due-date">${d ? `<b>${d.getDate()}</b><span>${esc(fShortMonth.format(d))}</span>` : "<b>–</b>"}</div>
     <div><a class="due-name" href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.name)}</a>
-      <div class="due-meta"><span>${esc(a.courseShort || a.course)}</span><span>${esc(when)}</span>${stateTag}</div></div>
+      <div class="due-meta">${subjTag(subjectOf(a.course, a.courseShort), a.courseShort || a.course)}<span>${esc(when)}</span>${stateTag}</div></div>
     <div class="due-act">${action}</div></div>`;
 }
 
@@ -378,7 +413,7 @@ function weekGrid(days) {
   const cols = days.map(({ d, list }) => {
     const evs = list.map((e) => {
       const h = Math.max(top(e.e) - top(e.s) - 3, 22);
-      return `<div class="wev ev-${e.type}${e.e < now ? " past" : ""}" style="top:${top(e.s) + 1}px;height:${h}px" title="${esc(`${e.title}\n${hm(e.s)} – ${hm(e.e)}\n${evMeta(e)}`)}">
+      return `<div class="wev subj${e.e < now ? " past" : ""}" style="${subjStyle(subjectOf(e.title))};top:${top(e.s) + 1}px;height:${h}px" title="${esc(`${e.title}\n${hm(e.s)} – ${hm(e.e)}\n${evMeta(e)}`)}">
         <span class="ti">${esc(e.title)}</span><span class="me">${hm(e.s)} – ${hm(e.e)}</span>${h > 62 ? `<span class="me">${esc(e.room)}</span>` : ""}</div>`;
     }).join("");
     const line = sameDay(d, now) && now.getHours() >= from && now.getHours() < to ? `<div class="now-line" style="top:${top(now)}px"></div>` : "";
@@ -413,7 +448,7 @@ function itemRow(it, course, showCourse) {
   const meta = [
     `<span class="tag t-${it.category}">${CAT_LABEL[it.category] || it.category}</span>`,
     it.correction ? '<span class="tag s-done">Corrigé</span>' : "",
-    showCourse ? `<span>${esc(course.short || course.name)}</span>` : "",
+    subjTag(subjectOf(course.name, course.short), course.short || course.name),
     kindText ? `<span>${kindText}</span>` : "",
     file && file.size ? `<span>${size(file.size)}</span>` : "",
     it.modified ? `<span class="${fresh(it) ? "fresh" : ""}">${fresh(it) ? "Nouveau, " : ""}${fDate.format(new Date(it.modified * 1000))}</span>` : "",
@@ -465,7 +500,7 @@ function renderResources(courses) {
       <button class="course" type="button" data-course="all" aria-pressed="${all}"><span class="cn">Tous les cours<span class="cs">${courses.length} cours</span></span></button>
       ${courses.map((c) => {
         const n = totalFresh(c);
-        return `<button class="course" type="button" data-course="${c.id}" aria-pressed="${res.course === c.id}">
+        return `<button class="course subj" type="button" style="${subjStyle(subjectOf(c.name, c.short))}" data-course="${c.id}" aria-pressed="${res.course === c.id}">
           <span class="cn">${esc(c.short || c.name)}<span class="cs">${esc(c.name.replace(c.short, "").replace(/^[\s:–-]+/, "") || c.name)}</span></span>${n ? `<span class="new">${n} nouv.</span>` : ""}</button>`;
       }).join("")}
     </nav>
