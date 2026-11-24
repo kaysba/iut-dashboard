@@ -1,6 +1,8 @@
 """Données fictives pour essayer le dashboard sans configuration (python dashboard.py --demo)."""
 import datetime as dt
+import io
 import time
+import zipfile
 
 COURSES = [
     ("R3.01", "R3.01 Développement web"),
@@ -108,20 +110,152 @@ def resources():
     return out
 
 
-def assignments():
+# Dépôts de démonstration : envois simulés en mémoire (rien n'est écrit sur le disque).
+_DEMO_DEPOT = {
+    # id : (fichiers, texte, max_fichiers, taille_max, types, remise_requise, declaration)
+    0: (True, False, 3, 20 * 1048576, [".pdf", ".zip"], True, False),     # ouvert, sans dépôt
+    1: (True, False, 3, 20 * 1048576, [], True, True),                    # brouillon de 2 fichiers, déclaration
+    2: (True, False, 1, 10 * 1048576, [".pdf"], False, False),            # 1 seul .pdf, le dépôt vaut remise
+    3: (False, True, 1, 0, [], False, False),                             # texte en ligne seulement
+    4: (True, False, 1, 20 * 1048576, [], True, False),                   # fermé (date limite passée)
+    5: (True, False, 1, 20 * 1048576, [".pdf"], True, False),             # déjà remis
+    6: (True, False, 1, 20 * 1048576, [], True, False),
+}
+_STATE = {}   # id -> {"statut", "fichiers": {nom: octets}, "modifie"}
+_REMIS_LE = lambda: time.time() - 3600  # noqa: E731
+
+
+def _pdf(titre):
+    """Un petit PDF valide d'une page."""
+    txt = f"BT /F1 20 Tf 60 740 Td ({titre}) Tj ET".encode("latin-1", "replace")
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length %d >>\nstream\n" % len(txt) + txt + b"\nendstream", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out, offs = b"%PDF-1.4\n", []
+    for i, o in enumerate(objs, 1):
+        offs.append(len(out))
+        out += b"%d 0 obj\n" % i + o + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1) + b"".join(b"%010d 00000 n \n" % o for o in offs)
+    return out + b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF" % (len(objs) + 1, xref)
+
+
+def _zip(noms):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for n in noms:
+            z.writestr(n, f"Contenu de démonstration de {n}\n")
+    return buf.getvalue()
+
+
+def _demo_file(nom):
+    if nom.endswith(".pdf"):
+        return _pdf(nom)
+    if nom.endswith(".zip"):
+        return _zip(["index.php", "src/Panier.php", "src/Produit.php", "README.md"])
+    return f"Fichier de démonstration : {nom}\n".encode()
+
+
+def _state(i):
+    if i not in _STATE:
+        if i == 1:
+            fich = {"panier.zip": _demo_file("panier.zip"), "rapport.pdf": _demo_file("rapport.pdf")}
+            _STATE[i] = {"statut": "brouillon", "fichiers": fich, "modifie": time.time() - 5 * 3600}
+        elif i in (5, 6):
+            _STATE[i] = {"statut": "remis", "fichiers": {"cover-letter.pdf": _demo_file("cover-letter.pdf")},
+                         "modifie": time.time() - 4 * 86400}
+        else:
+            _STATE[i] = {"statut": "nouveau", "fichiers": {}, "modifie": 0}
+    return _STATE[i]
+
+
+def _statut_liste(statut):
+    return {"remis": "rendu", "brouillon": "brouillon"}.get(statut, "a_rendre")
+
+
+def _depot(i, now=None):
+    fichiers, texte, maxf, taille, types, remise, decl = _DEMO_DEPOT[i]
+    st = _state(i)
+    row = _ROWS()[i]
+    cutoff = row[5] if len(row) > 5 else 0
+    raison = ""
+    if cutoff and (now or time.time()) > cutoff:
+        raison = "La date limite de dépôt est dépassée."
+    elif st["statut"] == "remis" and remise:
+        raison = "Ton dépôt est remis et Moodle ne permet plus de le modifier."
+    return {"fichiers": fichiers, "texte": texte, "max_fichiers": maxf, "taille_max": taille, "types": types,
+            "ouvert": not raison, "raison_fermeture": raison, "remise_requise": remise, "declaration": decl,
+            "texte_declaration": "Ce travail est le mien : je n'ai pas copié celui d'un autre étudiant ni d'une IA "
+                                 "sans l'avoir indiqué.",
+            "statut": st["statut"], "modifie": int(st["modifie"]),
+            "fichiers_actuels": [{"nom": n, "taille": len(b), "url": f"demo://{i}/{n}", "modifie": int(st["modifie"])}
+                                 for n, b in st["fichiers"].items()]}
+
+
+def _ROWS():  # noqa: N802
     now = time.time()
     h = 3600
-    rows = [
-        ("Compte rendu TP3 OSPF", "R3.06 Architecture des réseaux", "R3.06", now + 30 * h, "a_rendre"),
-        ("TP4 – Panier en PHP objet", "R3.01 Développement web", "R3.01", now + 3 * 24 * h, "brouillon"),
-        ("Livrable 2 – Maquettes et MCD", "SAÉ 3.01 Développement d'une application", "SAÉ 3.01", now + 6 * 24 * h, "a_rendre"),
-        ("Mini shell – rendu final", "R3.05 Programmation système", "R3.05", now + 12 * 24 * h, "a_rendre"),
-        ("TD5 – Requêtes SQL", "R3.07 SQL dans un langage de programmation", "R3.07", now - 20 * h, "a_rendre"),
-        ("Cover letter draft", "R3.12 Anglais", "R3.12", now - 4 * 24 * h, "rendu"),
-        ("TP2 – Configuration des VLAN", "R3.06 Architecture des réseaux", "R3.06", now - 9 * 24 * h, "rendu"),
+    return [
+        ("Compte rendu TP3 OSPF", "R3.06 Architecture des réseaux", "R3.06", now + 30 * h, "a_rendre", 0),
+        ("TP4 – Panier en PHP objet", "R3.01 Développement web", "R3.01", now + 3 * 24 * h, "brouillon", 0),
+        ("Livrable 2 – Maquettes et MCD", "SAÉ 3.01 Développement d'une application", "SAÉ 3.01", now + 6 * 24 * h, "a_rendre", 0),
+        ("Mini shell – rendu final", "R3.05 Programmation système", "R3.05", now + 12 * 24 * h, "a_rendre", 0),
+        ("TD5 – Requêtes SQL", "R3.07 SQL dans un langage de programmation", "R3.07", now - 20 * h, "a_rendre", now - 2 * h),
+        ("Cover letter draft", "R3.12 Anglais", "R3.12", now - 4 * 24 * h, "rendu", 0),
+        ("TP2 – Configuration des VLAN", "R3.06 Architecture des réseaux", "R3.06", now - 9 * 24 * h, "rendu", 0),
     ]
-    return [{"id": i, "cmid": i, "name": n, "course": c, "courseShort": s, "due": int(d), "cutoff": 0, "opens": 0,
-             "url": "#", "submitUrl": "#", "status": st, "graded": False} for i, (n, c, s, d, st) in enumerate(rows)]
+
+
+def assignments():
+    out = []
+    for i, (n, c, s, d, _, cut) in enumerate(_ROWS()):
+        out.append({"id": i, "cmid": i, "name": n, "course": c, "courseShort": s, "due": int(d), "cutoff": int(cut),
+                    "opens": 0, "url": "#", "submitUrl": "#", "status": _statut_liste(_state(i)["statut"]),
+                    "graded": False, "depot": _depot(i)})
+    return out
+
+
+def depot_state(i):
+    return {"id": i, "status": _statut_liste(_state(i)["statut"]), "graded": False, "depot": _depot(i)}
+
+
+def save_draft(i, fichiers, garder, upload_max=None, state=None):
+    from .moodle import verifier_envoi
+    depot = _depot(i)
+    verifier_envoi(depot, [(n, len(d)) for n, d in fichiers], garder, upload_max)
+    time.sleep(1.2)   # laisse voir « Enregistrement dans Moodle… »
+    st = _state(i)
+    nouveaux = dict(fichiers)
+    st["fichiers"] = {**(st["fichiers"] if garder else {}), **nouveaux}
+    st["statut"] = "brouillon" if depot["remise_requise"] else "remis"
+    st["modifie"] = time.time()
+    return depot_state(i)
+
+
+def submit(i, declaration):
+    from .moodle import verifier_remise
+    verifier_remise(_depot(i), declaration)
+    time.sleep(0.8)
+    st = _state(i)
+    st["statut"], st["modifie"] = "remis", time.time()
+    return depot_state(i)
+
+
+def delete_file(i, nom):
+    from .common import SourceError
+    st = _state(i)
+    if nom not in st["fichiers"] or len(st["fichiers"]) < 2:
+        raise SourceError("Impossible de vider le dépôt depuis le dashboard : utilise la page Moodle.")
+    del st["fichiers"][nom]
+    st["modifie"] = time.time()
+    return depot_state(i)
+
+
+def file_bytes(url):
+    """Contenu d'un fichier de démo (demo://id/nom) et son type MIME."""
+    i, nom = url[len("demo://"):].split("/", 1)
+    data = _state(int(i))["fichiers"].get(nom) or _demo_file(nom)
+    return data, ("application/pdf" if nom.endswith(".pdf") else "application/zip" if nom.endswith(".zip") else "text/plain")
 
 
 def mails():

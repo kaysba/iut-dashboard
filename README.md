@@ -68,6 +68,17 @@ Les notes viennent de la passerelle de l'IUT (`https://iut-notes.unice.fr`). Auc
 - Le dashboard respecte les options de ton département : si la promo ou les rangs sont masqués dans le relevé officiel, ils le sont aussi ici.
 - Un échec de connexion aux notes ne bloque pas Moodle : il s'affiche comme erreur de la source « Notes » dans la barre latérale.
 
+### Dépôt de devoirs
+
+Depuis la page **Devoirs**, **Déposer** envoie tes fichiers à Moodle sans quitter le dashboard.
+
+- Les règles du devoir (nombre de fichiers, taille, types, date limite, remise définitive ou non, déclaration) sont lues dans Moodle et contrôlées avant l'envoi, côté page et côté serveur.
+- Un devoir « avec brouillon » : **Enregistrer le brouillon** autant de fois que tu veux, puis **Rendre définitivement**. Cette dernière étape passe toujours par un écran rouge de vérification (aperçu des fichiers, contenu des ZIP, deux cases à cocher, bouton actif après 3 secondes). Rien n'est rendu sans ça.
+- Après chaque opération, le dashboard relit l'état dans Moodle et t'alerte si les fichiers ne correspondent pas à ce que tu as envoyé.
+- Les fichiers restent **en mémoire** le temps de l'envoi : rien n'est écrit sur le disque. `UPLOAD_MAX` (`config.py`, 100 Mo par défaut) limite la taille d'un envoi.
+- Si le Moodle de l'IUT refuse le dépôt depuis un programme externe, le dashboard le dit et ne propose plus que le lien vers la page Moodle.
+- Le mode `--demo` simule tout en mémoire.
+
 ### Couleurs par matière
 
 Les couleurs se règlent dans `config.py`, section `MATIERES` (copie-la depuis `config-exemple.py`) : une liste de `{"motif": "...", "nom": "...", "couleur": "#RRGGBB"}`.
@@ -91,7 +102,7 @@ Options : `--demo`, `--no-browser`, `--verbose`.
 - **Aujourd'hui** : cours en cours ou à venir, frise de la journée, devoirs les plus urgents, derniers mails.
 - **Planning** : vue jour ou semaine, navigation semaine précédente / suivante.
 - **Ressources** : tous les documents de tes cours, filtrables (Cours, TD, TP, Examens), groupés par section Moodle ou par type, avec recherche. Le bouton de téléchargement passe par le serveur local, donc pas besoin d'être connecté à Moodle dans le navigateur.
-- **Devoirs** : en retard, cette semaine, plus tard, déjà rendus. **Déposer** ouvre directement la page de dépôt Moodle.
+- **Devoirs** : en retard, cette semaine, plus tard, déjà rendus. **Déposer** ouvre un panneau de dépôt (voir plus bas) ; le lien vers la page Moodle reste toujours disponible.
 - **Notes** : moyenne, rang et UE du semestre (par UE ou par matière, avec toutes les évaluations). Les nouvelles notes sont signalées.
 - **Mails** : 25 derniers mails de la boîte de réception.
 

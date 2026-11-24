@@ -123,7 +123,7 @@ class AssignmentsTest(unittest.TestCase):
         self.assertTrue(res[4]["graded"])
         self.assertFalse(res[1]["graded"])
         self.assertEqual(set(res[1]), {"id", "cmid", "name", "course", "courseShort", "due", "cutoff",
-                                       "opens", "url", "submitUrl", "status", "graded"})
+                                       "opens", "url", "submitUrl", "status", "graded", "depot"})
 
     def test_cache_only_stores_rendu(self):
         self.run_assignments(Fake())

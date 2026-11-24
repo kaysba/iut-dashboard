@@ -48,6 +48,8 @@ NOTES_URL = "https://iut-notes.unice.fr"
 NOTES_PDF_TYPE = "short"
 
 # ── Serveur local ────────────────────────────────────────────
+# Taille maximale (octets) d'un envoi de fichiers depuis le dashboard, quelle que soit la limite du devoir.
+UPLOAD_MAX = 100 * 1024 * 1024
 PORT = 8765
 OUVRIR_NAVIGATEUR = True
 

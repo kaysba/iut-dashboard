@@ -18,6 +18,7 @@
   --green: #1C7C54;
   --green-tint: #E5F4EC;
   --on-accent: #FFFFFF;       /* texte sur --blue et --orange */
+  --danger: #C62828; --on-danger: #FFFFFF;
   --on-ink: #FFFFFF;          /* texte sur fond --ink */
   --hover: #FAFBFD;
   --err-bg: #FFF8F7; --err-line: #F2C7C3; --err-ink: #8A2620;
@@ -565,3 +566,76 @@ body.modal-open { overflow: hidden; }
 .theme-btn .moon { display: none; }
 :root[data-theme="dark"] .theme-btn .sun { display: none; }
 :root[data-theme="dark"] .theme-btn .moon { display: inline; }
+
+/* ── Dépôt de fichiers ──────────────────────────────────── */
+.due-closed { font-size: 12.5px; color: var(--muted); }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
+.btn.danger:hover:not(:disabled) { filter: brightness(.92); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.modal.dp { width: min(680px, 100%); max-height: min(90vh, 860px); }
+.dp-head { display: flex; gap: 8px; align-items: flex-start; padding: 18px 20px 12px; border-bottom: 1px solid var(--line-2); }
+.dp-head > div { flex: 1; min-width: 0; }
+.dp-head h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+.dp-head p { margin: 0; display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; font-size: 13.5px; color: var(--muted); }
+.dp-late { color: var(--red); font-weight: 600; }
+.dp-body { padding: 14px 20px 8px; overflow: auto; flex: 1; font-size: 14.5px; }
+.dp-body h3 { margin: 16px 0 6px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.dp-rules { margin: 0 0 4px; font-weight: 600; color: var(--ink-2); }
+.dp-ok { margin: 8px 0; padding: 8px 12px; border-radius: var(--r-sm); background: var(--green-tint); color: var(--green); font-weight: 500; }
+.dp-files, .dp-review, .dp-errs, .dp-flags, .dp-zip ul { list-style: none; margin: 0; padding: 0; }
+.dp-files li { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line-2); }
+.dp-files li:first-child { border-top: 0; }
+.dp-name { font-weight: 500; overflow-wrap: anywhere; flex: 1 1 200px; min-width: 0; }
+.dp-meta { font-size: 13px; color: var(--muted); }
+.dp-zone { margin: 14px 0 6px; padding: 18px; border: 2px dashed var(--line); border-radius: var(--r-md); text-align: center; display: grid; gap: 10px; justify-items: center; color: var(--ink-2); }
+.dp-zone p { margin: 0; display: flex; gap: 8px; align-items: center; }
+.dp-zone.over { border-color: var(--blue); background: var(--blue-tint); }
+.dp-zone:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.dp-errs { margin: 8px 0; display: grid; gap: 4px; }
+.dp-errs li { padding: 7px 12px; border-radius: var(--r-sm); background: var(--err-bg); border: 1px solid var(--err-line); color: var(--err-ink); font-size: 13.5px; }
+.dp-note { margin: 8px 0; padding: 7px 12px; border-radius: var(--r-sm); background: var(--orange-tint); color: var(--orange-ink); font-weight: 500; font-size: 13.5px; }
+.dp-mode { border: 0; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.dp-mode label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.dp-prog { margin: 14px 0 4px; }
+.dp-prog p { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.dp-bar { height: 8px; border-radius: 4px; background: var(--line-2); overflow: hidden; }
+.dp-bar i { display: block; height: 100%; background: var(--blue); transition: width .15s; }
+.dp-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 20px 16px; border-top: 1px solid var(--line-2); }
+.dp-spacer { flex: 1; }
+
+/* Écran de vérification avant la remise */
+.dp-danger { display: flex; gap: 14px; align-items: center; padding: 18px 22px; background: var(--danger); color: var(--on-danger); border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.dp-danger svg { width: 38px; height: 38px; stroke-width: 1.9; flex: none; }
+.dp-danger h2 { margin: 0; font-size: 21px; line-height: 1.2; font-weight: 700; }
+.dp-danger p { margin: 4px 0 0; font-size: 14.5px; }
+.dp-recap h3 { margin: 0 0 4px; font-size: 17px; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.dp-recap p { margin: 0; display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; color: var(--ink-2); }
+.dp-review > li { padding: 10px 0; border-top: 1px solid var(--line-2); }
+.dp-review > li:first-child { border-top: 0; }
+.dp-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.dp-fi { flex: 1 1 220px; min-width: 0; display: grid; gap: 2px; }
+.dp-flags { margin-top: 6px; display: grid; gap: 4px; }
+.dp-flags li { padding: 4px 10px; border-radius: var(--r-sm); background: var(--orange-tint); color: var(--orange-ink); font-size: 13px; font-weight: 500; }
+.dp-flags li::before { content: "⚠ "; }
+.dp-flags:empty { display: none; }
+.dp-zip { margin-top: 6px; padding: 8px 12px; border-radius: var(--r-sm); background: var(--paper); font-size: 13px; max-height: 180px; overflow: auto; }
+.dp-zip ul { display: grid; gap: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.dp-zip li.dir { color: var(--muted); }
+.dp-checks { margin: 16px 0 6px; display: grid; gap: 10px; }
+.dp-check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer; }
+.dp-check input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--danger); flex: none; }
+.dp-status { margin: 8px 0; padding: 10px 14px; border-radius: var(--r-sm); }
+.dp-status.ok { background: var(--green-tint); color: var(--green); }
+.dp-status.bad { background: var(--err-bg); color: var(--err-ink); }
+.dp-alert { padding: 12px 14px; border-radius: var(--r-sm); background: var(--danger); color: var(--on-danger); display: grid; gap: 8px; justify-items: start; }
+.dp-alert p { margin: 0; }
+.dp-alert .btn { color: var(--ink); }
+@media (max-width: 560px) {
+  .modal-back:has(.dp) { padding: 0; align-items: end; }
+  .modal.dp { width: 100%; max-height: 94vh; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  .dp-foot .btn { flex: 1 1 100%; justify-content: center; }
+  .dp-foot .dp-spacer { display: none; }
+  .dp-danger { padding: 14px 16px; }
+  .dp-danger h2 { font-size: 18px; }
+  .dp-danger svg { width: 30px; height: 30px; }
+}

@@ -7,13 +7,18 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from .common import (Session, SourceError, delete_secret, http_post_json,
-                     load_secret, save_secret)
+from .common import (Session, SourceError, delete_secret, http_get, http_post_json,
+                     http_post_multipart, load_secret, save_secret)
 from .sso import cas_login
 
 TOKEN_FILE = "moodle_token.json"
 STATUS_FILE = "assign_status.json"
 EVENTS_PAGE = 50
+DENIED = ("Le Moodle de l'IUT n'autorise pas le dépôt depuis l'extérieur. "
+          "Utilise le lien vers la page Moodle.")
+# Codes d'erreur Moodle qui signifient « ce service n'est pas autorisé pour l'app mobile ».
+DENIED_CODES = {"accessexception", "webservice_access_exception", "nofileupload", "servicenotavailable",
+                "invalidrecord", "functionnotfound", "unknownfunction", "disabled"}
 
 
 class Moodle:
@@ -95,9 +100,10 @@ class Moodle:
                 self._token = None
                 delete_secret(TOKEN_FILE)
                 return self.call(fn, _retry=False, **params)
-            if code == "invalidtoken":
-                raise SourceError("Jeton Moodle invalide ou expiré.")
-            raise SourceError(f"Moodle ({fn}) : {resp.get('message', code)}")
+            err = SourceError("Jeton Moodle invalide ou expiré." if code == "invalidtoken"
+                              else f"Moodle ({fn}) : {resp.get('message', code)}")
+            err.code = code
+            raise err
         return resp
 
     def site(self):
@@ -143,6 +149,7 @@ class Moodle:
         raw = self.call("mod_assign_get_assignments", courseids=list(courses))
         now = time.time()
         items = []
+        raws, details = {}, {}
         for c in raw.get("courses", []):
             if c["id"] not in courses:
                 continue
@@ -150,6 +157,7 @@ class Moodle:
                 due = a.get("duedate") or 0
                 if due and due < now - 45 * 86400:
                     continue  # vieux devoir, on ignore
+                raws[a["id"]] = a
                 items.append({
                     "id": a["id"], "cmid": a["cmid"], "name": html.unescape(a["name"]),
                     "course": courses[c["id"]]["name"], "courseShort": courses[c["id"]]["short"],
@@ -171,10 +179,8 @@ class Moodle:
                 item["status"] = "inconnu"
                 item["graded"] = False
                 return
-            last = st.get("lastattempt", {}) or {}
-            sub = last.get("submission") or last.get("teamsubmission") or {}
-            item["status"] = {"submitted": "rendu", "draft": "brouillon"}.get(sub.get("status"), "a_rendre")
-            item["graded"] = last.get("gradingstatus") == "graded"
+            details[item["id"]] = st
+            item["status"], item["graded"] = _status_of(st)
 
         def resolve(item):
             key = str(item["id"])
@@ -195,6 +201,9 @@ class Moodle:
             list(pool.map(resolve, items))
         if new_cache:
             save_secret(STATUS_FILE, {**cached, **new_cache})
+        site_limit = self._site_upload_limit()
+        for item in items:
+            item["depot"] = _depot(raws[item["id"]], item["status"], details.get(item["id"]), now, site_limit, self.base)
         items.sort(key=lambda i: (i["due"] == 0, i["due"]))
         return items
 
@@ -227,12 +236,233 @@ class Moodle:
         self._calendar_ok = True
         return ids
 
+    # ── Dépôt de fichiers ───────────────────────────────────
+    def _site_upload_limit(self):
+        try:
+            return int(self.site().get("usermaxuploadfilesize") or 0)
+        except (SourceError, ValueError, TypeError):
+            return 0
+
+    def _assignment(self, assign_id):
+        ids = [c["id"] for c in self.courses()]
+        raw = self.call("mod_assign_get_assignments", courseids=ids) if ids else {}
+        for c in raw.get("courses", []):
+            for a in c.get("assignments", []):
+                if a["id"] == assign_id:
+                    return a
+        raise SourceError("Devoir introuvable.")
+
+    def depot_state(self, assign_id):
+        """État actuel du dépôt, relu depuis Moodle (ne suppose jamais qu'une opération a réussi)."""
+        a = self._assignment(assign_id)
+        st = self.call("mod_assign_get_submission_status", assignid=assign_id)
+        status, graded = _status_of(st)
+        return {"id": assign_id, "status": status, "graded": graded,
+                "depot": _depot(a, status, st, time.time(), self._site_upload_limit(), self.base)}
+
+    def _refuse(self, e):
+        """Transforme un refus du site (fonction ou envoi non autorisés) en message clair."""
+        text = str(e)
+        if getattr(e, "code", "") in DENIED_CODES or text.startswith(("HTTP 403", "HTTP 404")):
+            return SourceError(DENIED)
+        return e
+
+    def upload_draft(self, fichiers, itemid=None):
+        """Envoie des fichiers [(nom, octets)] dans une zone de brouillon. Le premier envoi crée la zone
+        (itemid renvoyé par Moodle), les suivants la réutilisent."""
+        for nom, data in fichiers:
+            fields = {"token": self.token(), "filearea": "draft"}
+            if itemid:
+                fields["itemid"] = itemid
+            try:
+                resp = http_post_multipart(f"{self.base}/webservice/upload.php", fields, [("file_1", nom, data)])
+            except SourceError as e:
+                raise self._refuse(e)
+            if isinstance(resp, dict) and (resp.get("error") or resp.get("exception")):
+                err = SourceError(str(resp.get("error") or resp.get("message") or resp.get("exception")))
+                err.code = resp.get("errorcode", "")
+                raise self._refuse(err)
+            if not (isinstance(resp, list) and resp and resp[0].get("itemid")):
+                raise SourceError("Moodle n'a pas confirmé la réception du fichier.")
+            itemid = resp[0]["itemid"]
+        return itemid
+
+    def _check_warnings(self, warnings):
+        if warnings:
+            msgs = [w.get("message", "") for w in warnings if isinstance(w, dict)] if isinstance(warnings, list) else []
+            raise SourceError("Moodle a refusé l'opération : " + (" ".join(m for m in msgs if m) or str(warnings)))
+
+    def save_submission(self, assign_id, itemid, texte=None):
+        plugindata = {}
+        if itemid is not None:
+            plugindata["files_filemanager"] = itemid
+        if texte is not None:
+            plugindata["onlinetext_editor"] = {"text": texte, "format": 1, "itemid": 0}
+        try:
+            warnings = self.call("mod_assign_save_submission", _retry=False, assignmentid=assign_id, plugindata=plugindata)
+        except SourceError as e:
+            raise self._refuse(e)
+        self._check_warnings(warnings)
+
+    def submit_for_grading(self, assign_id, declaration_acceptee):
+        try:
+            warnings = self.call("mod_assign_submit_for_grading", _retry=False, assignmentid=assign_id,
+                                 acceptsubmissionstatement=1 if declaration_acceptee else 0)
+        except SourceError as e:
+            raise self._refuse(e)
+        self._check_warnings(warnings)
+
+    def _download(self, fileurl):
+        try:
+            return http_get(self.file_url(fileurl), timeout=120)
+        except OSError as e:
+            raise SourceError(f"Impossible de relire un fichier déjà déposé : {e}")
+
+    def save_draft(self, assign_id, fichiers, garder_existants=True, upload_max=None, state=None):
+        """fichiers : [(nom, octets)]. Remplace le brouillon Moodle : si garder_existants, les fichiers
+        déjà déposés sont d'abord recopiés dans la même zone de brouillon."""
+        state = state or self.depot_state(assign_id)
+        depot = state["depot"]
+        verifier_envoi(depot, [(n, len(d)) for n, d in fichiers], garder_existants, upload_max)
+        nouveaux = {n for n, _ in fichiers}
+        itemid = None
+        if garder_existants:
+            for f in depot["fichiers_actuels"]:
+                if f["nom"] not in nouveaux:
+                    itemid = self.upload_draft([(f["nom"], self._download(f["url"]))], itemid)
+        itemid = self.upload_draft(fichiers, itemid)
+        self.save_submission(assign_id, itemid)
+        return self.depot_state(assign_id)
+
+    def delete_file(self, assign_id, nom):
+        state = self.depot_state(assign_id)
+        depot = state["depot"]
+        if not depot["ouvert"]:
+            raise SourceError(depot["raison_fermeture"] or "Dépôt fermé.")
+        reste = [f for f in depot["fichiers_actuels"] if f["nom"] != nom]
+        if len(reste) == len(depot["fichiers_actuels"]):
+            raise SourceError("Ce fichier n'est pas dans ton dépôt.")
+        if not reste:
+            raise SourceError("Impossible de vider le dépôt depuis le dashboard : utilise la page Moodle.")
+        itemid = None
+        for f in reste:
+            itemid = self.upload_draft([(f["nom"], self._download(f["url"]))], itemid)
+        self.save_submission(assign_id, itemid)
+        return self.depot_state(assign_id)
+
+    def submit(self, assign_id, declaration_acceptee):
+        depot = self.depot_state(assign_id)["depot"]
+        verifier_remise(depot, declaration_acceptee)
+        self.submit_for_grading(assign_id, declaration_acceptee)
+        return self.depot_state(assign_id)
+
     def file_url(self, fileurl):
         """URL de téléchargement authentifiée, uniquement pour ce Moodle."""
         if not fileurl.startswith(self.base):
             raise SourceError("Fichier hors Moodle refusé.")
         sep = "&" if "?" in fileurl else "?"
         return f"{fileurl}{sep}token={self.token()}"
+
+
+# ── Règles de dépôt ──────────────────────────────────────────
+def _status_of(st):
+    last = (st or {}).get("lastattempt", {}) or {}
+    sub = last.get("submission") or last.get("teamsubmission") or {}
+    return ({"submitted": "rendu", "draft": "brouillon"}.get(sub.get("status"), "a_rendre"),
+            last.get("gradingstatus") == "graded")
+
+
+def _clean(text):
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", text or ""))).strip()
+
+
+def _depot(a, status, st, now, site_limit, base):
+    """Règles de dépôt d'un devoir (mod_assign_get_assignments) + état (mod_assign_get_submission_status)."""
+    cfg = {(c.get("plugin"), c.get("name")): c.get("value") for c in a.get("configs") or []}
+    fichiers = cfg.get(("file", "enabled")) == "1"
+    texte = cfg.get(("onlinetext", "enabled")) == "1"
+    taille = int(cfg.get(("file", "maxsubmissionsizebytes")) or a.get("maxsubmissionsizebytes") or 0) or site_limit
+    entries = [e.strip().lower() for e in re.split(r"[,;\s]+", cfg.get(("file", "filetypeslist")) or "") if e.strip()]
+    # Des groupes (« document », « image ») ou des types MIME ne se vérifient pas ici : Moodle tranchera.
+    types = [e for e in entries if e.startswith(".")] if all(e.startswith(".") for e in entries) else []
+    remise_requise = bool(a.get("submissiondrafts"))
+    declaration = bool(a.get("requiresubmissionstatement"))
+    texte_decl = _clean(a.get("submissionstatement")) or (
+        "Ce devoir est mon propre travail, à l'exception des parties où j'ai indiqué l'origine "
+        "du travail d'autres personnes.")
+
+    last = (st or {}).get("lastattempt", {}) or {}
+    sub = last.get("submission") or last.get("teamsubmission") or {}
+    statut = {"submitted": "remis", "draft": "brouillon"}.get(sub.get("status"), "nouveau")
+    if st is None:   # liste : état déduit du statut du devoir
+        statut = {"rendu": "remis", "brouillon": "brouillon"}.get(status, "nouveau")
+    actuels = []
+    for plugin in sub.get("plugins") or []:
+        if plugin.get("type") == "file":
+            for area in plugin.get("fileareas") or []:
+                for f in area.get("files") or []:
+                    actuels.append({"nom": f.get("filename", ""), "taille": f.get("filesize") or 0,
+                                    "url": f.get("fileurl", ""), "modifie": f.get("timemodified") or 0})
+
+    raison = ""
+    opens, cutoff = a.get("allowsubmissionsfromdate") or 0, a.get("cutoffdate") or 0
+    if opens and now < opens:
+        raison = "Le dépôt n'est pas encore ouvert."
+    elif cutoff and now > cutoff:
+        raison = "La date limite de dépôt est dépassée."
+    elif st is not None and (last.get("locked") or last.get("canedit") is False):
+        raison = ("Ton dépôt est remis et Moodle ne permet plus de le modifier." if statut == "remis"
+                  else "Moodle ne t'autorise pas à modifier ce dépôt.")
+    elif st is None and statut == "remis" and remise_requise:
+        raison = "Ton dépôt est déjà remis."
+    return {"fichiers": fichiers, "texte": texte,
+            "max_fichiers": int(cfg.get(("file", "maxfilesubmissions")) or 1),
+            "taille_max": taille, "types": types, "ouvert": not raison, "raison_fermeture": raison,
+            "remise_requise": remise_requise, "declaration": declaration, "texte_declaration": texte_decl,
+            "statut": statut, "fichiers_actuels": actuels, "modifie": sub.get("timemodified") or 0}
+
+
+def _taille(n):
+    return f"{n / 1048576:.0f} Mo".replace(".0", "") if n >= 1048576 else f"{max(1, round(n / 1024))} Ko"
+
+
+def verifier_envoi(depot, fichiers, garder_existants, upload_max=None):
+    """Contrôles côté serveur d'un envoi : fichiers = [(nom, taille)]. Lève SourceError avec la raison."""
+    if not depot["ouvert"]:
+        raise SourceError(depot["raison_fermeture"] or "Le dépôt est fermé.")
+    if not depot["fichiers"]:
+        raise SourceError("Ce devoir n'accepte pas de fichiers : utilise la page Moodle.")
+    if not fichiers:
+        raise SourceError("Aucun fichier à envoyer.")
+    noms = [n for n, _ in fichiers]
+    if len(set(noms)) != len(noms):
+        raise SourceError("Deux fichiers portent le même nom.")
+    gardes = [f for f in depot["fichiers_actuels"] if f["nom"] not in noms] if garder_existants else []
+    if len(noms) + len(gardes) > depot["max_fichiers"]:
+        raise SourceError(f"Trop de fichiers : ce devoir en accepte {depot['max_fichiers']} au maximum "
+                          f"(tu en as {len(noms) + len(gardes)}).")
+    for nom, taille in fichiers:
+        if not nom or "/" in nom or "\\" in nom:
+            raise SourceError("Nom de fichier invalide.")
+        limite = depot["taille_max"]
+        if limite and taille > limite:
+            raise SourceError(f"{nom} est trop gros ({_taille(taille)}) : ce devoir accepte {_taille(limite)} au maximum.")
+        if upload_max and taille > upload_max:
+            raise SourceError(f"{nom} dépasse la limite du dashboard ({_taille(upload_max)}).")
+        if depot["types"] and not any(nom.lower().endswith(t) for t in depot["types"]):
+            ok = " ou ".join(depot["types"])
+            raise SourceError(f"{nom} n'est pas accepté : ce devoir demande un {ok}.")
+
+
+def verifier_remise(depot, declaration_acceptee):
+    if not depot["ouvert"]:
+        raise SourceError(depot["raison_fermeture"] or "Le dépôt est fermé.")
+    if not depot["remise_requise"]:
+        raise SourceError("Ce devoir n'a pas d'étape de remise : l'enregistrement du dépôt suffit.")
+    if depot["statut"] != "brouillon":
+        raise SourceError("Il n'y a pas de brouillon à rendre : enregistre d'abord ton dépôt.")
+    if depot["declaration"] and not declaration_acceptee:
+        raise SourceError("Tu dois accepter la déclaration du devoir pour le rendre.")
 
 
 # ── Mise en forme ────────────────────────────────────────────

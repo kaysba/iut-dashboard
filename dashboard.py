@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import threading
+import time
 import traceback
 import urllib.parse
 import urllib.request
@@ -25,8 +26,9 @@ if sys.version_info < (3, 8):
 import config
 from sources import demo
 from sources.ade import ADE
-from sources.common import UA, Session, SourceError, TTLCache, delete_secret, load_secret, save_secret
-from sources.moodle import Moodle
+from sources.common import (UA, Session, SourceError, TTLCache, delete_secret, load_secret, parse_multipart,
+                            save_secret)
+from sources.moodle import DENIED, Moodle, verifier_envoi, verifier_remise
 from sources.notes import Notes
 from sources.outlook import Outlook
 
@@ -277,6 +279,8 @@ class Handler(BaseHTTPRequestHandler):
         if msg == "SESSION_EXPIRED":
             SESSION["ok"] = False
             return self._json({"error": "Ta session a expiré. Reconnecte-toi.", "code": "login_required"}, 401)
+        if msg == DENIED:
+            return self._json({"error": msg, "code": "depot_refuse"}, 403)
         if msg == "NOTES_LOGIN_REQUIRED":
             return self._json({"error": "Entre ton mot de passe pour afficher tes notes.", "code": "notes_login_required"}, 401)
         if msg == "NOT_CONNECTED":
@@ -292,7 +296,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlsplit(self.path)
         q = urllib.parse.parse_qs(url.query)
         force = q.get("refresh", ["0"])[0] == "1"
-        if (url.path in ROUTES or url.path in ("/api/file", "/api/mail/auth-url", "/api/notes/pdf")) and not logged_in():
+        depot_get = re.fullmatch(r"/api/assignments/(\d+)/depot", url.path)
+        if (url.path in ROUTES or depot_get or url.path in ("/api/file", "/api/mail/auth-url", "/api/notes/pdf")) and not logged_in():
             return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
         try:
             if url.path == "/api/me":
@@ -301,6 +306,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(ROUTES[url.path](q, force))
             if url.path == "/api/mail/auth-url":
                 return self._json({"url": outlook.auth_url()})
+            if depot_get:
+                aid = int(depot_get.group(1))
+                return self._json(demo.depot_state(aid) if DEMO else moodle.depot_state(aid))
             if url.path == "/api/file":
                 return self._file(q.get("u", [""])[0])
             if url.path == "/api/notes/pdf":
@@ -315,6 +323,9 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin", "")
         if origin and urllib.parse.urlsplit(origin).hostname not in ("127.0.0.1", "localhost"):
             return self.send_error(403)
+        depot_post = re.fullmatch(r"/api/assignments/(\d+)/(draft|submit|delete-file)", self.path)
+        if depot_post:
+            return self._depot_post(int(depot_post.group(1)), depot_post.group(2))
         length = int(self.headers.get("Content-Length") or 0)
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
@@ -341,6 +352,62 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(e)
         self.send_error(404)
 
+    def _read_body(self, limit):
+        """Lit le corps en flux, en mémoire (jamais sur le disque), sans dépasser la limite annoncée."""
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > limit:
+            self.close_connection = True
+            raise SourceError(f"Envoi trop gros ({length // 1048576} Mo) : la limite est de {max(1, limit // 1048576)} Mo.")
+        chunks, left = [], length
+        while left > 0:
+            chunk = self.rfile.read(min(65536, left))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            left -= len(chunk)
+            if DEMO:
+                time.sleep(0.01)   # démo : laisse voir la barre de progression
+        return b"".join(chunks)
+
+    def _depot_post(self, aid, action):
+        try:
+            if not logged_in():
+                return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
+            upload_max = getattr(config, "UPLOAD_MAX", 100 * 1024 * 1024)
+            if action == "draft":
+                state = demo.depot_state(aid) if DEMO else moodle.depot_state(aid)
+                depot = state["depot"]
+                limit = upload_max
+                if depot["taille_max"]:
+                    limit = min(limit, depot["taille_max"] * max(1, depot["max_fichiers"]) + 65536)
+                fields, files = parse_multipart(self._read_body(limit), self.headers.get("Content-Type", ""))
+                fichiers = [(nom, data) for _, nom, data in files]
+                garder = fields.get("garder_existants", "1") != "0"
+                verifier_envoi(depot, [(n, len(d)) for n, d in fichiers], garder, upload_max)
+                if not depot["remise_requise"]:   # le dépôt vaut remise : même exigences que « submit »
+                    if fields.get("verifie") != "1":
+                        raise SourceError("Confirmation manquante : coche « J'ai vérifié les fichiers que je rends ».")
+                    if depot["declaration"] and fields.get("declaration") != "1":
+                        raise SourceError("Tu dois accepter la déclaration du devoir pour le rendre.")
+                if DEMO:
+                    result = demo.save_draft(aid, fichiers, garder, upload_max, state)
+                else:
+                    result = moodle.save_draft(aid, fichiers, garder, upload_max, state)
+            else:
+                payload = json.loads(self._read_body(65536) or b"{}")
+                if action == "submit":
+                    if payload.get("verifie") is not True:
+                        raise SourceError("Confirmation manquante : coche « J'ai vérifié les fichiers que je rends ».")
+                    decl = payload.get("declaration") is True
+                    result = demo.submit(aid, decl) if DEMO else moodle.submit(aid, decl)
+                else:
+                    nom = str(payload.get("nom") or "")
+                    result = demo.delete_file(aid, nom) if DEMO else moodle.delete_file(aid, nom)
+            cache.clear()
+            return self._json(result)
+        except Exception as e:  # noqa: BLE001
+            return self._error(e)
+
     def _notes_pdf(self, sid):
         if DEMO:
             raise SourceError("Le relevé PDF officiel n'est pas disponible en mode démo.")
@@ -356,6 +423,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _file(self, fileurl):
+        if DEMO and fileurl.startswith("demo://"):
+            body, ctype = demo.file_bytes(fileurl)
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         url = moodle.file_url(fileurl)
         req = urllib.request.Request(url, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=60) as r:

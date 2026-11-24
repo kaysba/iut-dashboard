@@ -2,6 +2,7 @@
 import http.cookiejar
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -93,6 +94,71 @@ def http_post_json(url, data, timeout=25):
             return json.loads(e.read().decode("utf-8"))
         except ValueError:
             raise SourceError(f"HTTP {e.code} sur {url}")
+
+
+# ── multipart/form-data (sans dépendance) ───────────────────
+def _quote_disp(value):
+    """Valeur entre guillemets d'un en-tête Content-Disposition (RFC 7578 : %22, %0D, %0A)."""
+    return str(value).replace('"', "%22").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def encode_multipart(fields, files):
+    """fields : {nom: valeur} ; files : [(champ, nom_de_fichier, octets)]. Renvoie (corps, Content-Type)."""
+    boundary = "----iutdash" + os.urandom(12).hex()
+    out = []
+    for name, value in fields.items():
+        out.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{_quote_disp(name)}"\r\n\r\n'.encode("utf-8"))
+        out.append(str(value).encode("utf-8") + b"\r\n")
+    for field, filename, data in files:
+        out.append((f'--{boundary}\r\nContent-Disposition: form-data; name="{_quote_disp(field)}"; '
+                    f'filename="{_quote_disp(filename)}"\r\nContent-Type: application/octet-stream\r\n\r\n').encode("utf-8"))
+        out.append(bytes(data) + b"\r\n")
+    out.append(f"--{boundary}--\r\n".encode())
+    return b"".join(out), f"multipart/form-data; boundary={boundary}"
+
+
+def parse_multipart(body, content_type):
+    """Inverse d'encode_multipart. Renvoie (champs {nom: texte}, fichiers [(champ, nom, octets)])."""
+    m = re.search(r'boundary="?([^";]+)"?', content_type or "")
+    if not m:
+        raise SourceError("Requête multipart invalide.")
+    delim = b"--" + m.group(1).encode()
+    fields, files = {}, []
+    for part in body.split(delim)[1:]:
+        if part.startswith(b"--"):
+            break
+        head, sep, data = part.lstrip(b"\r\n").partition(b"\r\n\r\n")
+        if not sep:
+            continue
+        data = data[:-2] if data.endswith(b"\r\n") else data
+        header = head.decode("utf-8", "replace")
+        name = re.search(r'name="([^"]*)"', header)
+        filename = re.search(r'filename="([^"]*)"', header)
+        unq = lambda v: urllib.parse.unquote(v, errors="replace") if re.search(r"%(22|0D|0A)", v) else v  # noqa: E731
+        if not name:
+            continue
+        if filename:
+            files.append((unq(name.group(1)), unq(filename.group(1)), data))
+        else:
+            fields[unq(name.group(1))] = data.decode("utf-8", "replace")
+    return fields, files
+
+
+def http_post_multipart(url, fields, files, timeout=300):
+    """Envoie un formulaire multipart et renvoie le JSON de la réponse."""
+    body, ctype = encode_multipart(fields, files)
+    req = urllib.request.Request(url, data=body, headers={"User-Agent": UA, "Content-Type": ctype})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+    except urllib.error.HTTPError as e:
+        raw = e.read() if e.fp else b""
+        if not raw.lstrip().startswith((b"{", b"[")):
+            raise SourceError(f"HTTP {e.code} sur {url}")
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except ValueError:
+        raise SourceError("Réponse illisible de Moodle pendant l'envoi.")
 
 
 # ── Parseur de formulaires HTML ─────────────────────────────

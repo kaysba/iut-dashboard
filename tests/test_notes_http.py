@@ -87,7 +87,7 @@ class HttpTest(unittest.TestCase):
                       "data": {"dataPremièreConnexion": d["dataPremiereConnexion"],
                                "relevéEtudiant": d["releveAutreSemestre"]}}
         self.srv = ThreadingHTTPServer(("127.0.0.1", 0), Fake)
-        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         self.addCleanup(self.srv.server_close)
         self.addCleanup(self.srv.shutdown)
         cfg = SimpleNamespace(NOTES_URL=f"http://127.0.0.1:{self.srv.server_port}", UNICA_LOGIN="etu")
