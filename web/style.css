@@ -182,7 +182,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .day-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .day-top h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .day-top span { color: var(--muted); font-size: 14px; }
-.strip { position: relative; height: 92px; margin: 0 0 6px; }
+.strip { position: relative; height: 104px; margin: 0 0 6px; }
 .strip-grid { position: absolute; inset: 0; display: flex; }
 .strip-grid i { flex: 1; border-left: 1px dashed var(--line-2); }
 .strip-grid i:first-child { border-left-color: var(--line); }
