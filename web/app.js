@@ -1343,14 +1343,24 @@ function start() {
   badges();
 }
 
-/* ── Thème clair / sombre (mémorisé dans localStorage, clair par défaut) ── */
-function applyTheme(t) {
-  document.documentElement.dataset.theme = t;
-  $("#theme-label").textContent = t === "dark" ? "Thème clair" : "Thème sombre";
-  try { localStorage.setItem("theme", t); } catch { /* stockage indisponible */ }
+/* ── Thème : système (par défaut), clair ou sombre. Le bouton fait défiler les trois états. ── */
+const THEME_LABEL = { system: "Thème : système", light: "Thème : clair", dark: "Thème : sombre" };
+const themeQuery = matchMedia("(prefers-color-scheme: dark)");
+function themeMode() {
+  try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") return t; } catch { /* stockage indisponible */ }
+  return "system";
 }
-$("#theme-label").textContent = document.documentElement.dataset.theme === "dark" ? "Thème clair" : "Thème sombre";
-$("#theme").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+function applyTheme(mode) {
+  document.documentElement.dataset.theme = mode === "system" ? (themeQuery.matches ? "dark" : "light") : mode;
+  $("#theme-label").textContent = THEME_LABEL[mode];
+}
+function setTheme(mode) {
+  try { if (mode === "system") localStorage.removeItem("theme"); else localStorage.setItem("theme", mode); } catch { /* stockage indisponible */ }
+  applyTheme(mode);
+}
+themeQuery.addEventListener("change", () => { if (themeMode() === "system") applyTheme("system"); });
+applyTheme(themeMode());
+$("#theme").addEventListener("click", () => setTheme({ system: "light", light: "dark", dark: "system" }[themeMode()]));
 
 $("#logout").addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" });

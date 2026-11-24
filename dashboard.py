@@ -479,6 +479,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     mimetypes.add_type("text/javascript", ".js")
     mimetypes.add_type("text/css", ".css")
+    mimetypes.add_type("font/woff2", ".woff2")
     port = config.PORT
     if not DEMO:
         import atexit

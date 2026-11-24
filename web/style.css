@@ -1,3 +1,11 @@
+/* ── Police hébergée en local (Schibsted Grotesk, variable 400–700, licence OFL : fonts/OFL.txt) ── */
+@font-face { font-family: "Schibsted Grotesk"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(/fonts/schibsted-grotesk-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Schibsted Grotesk"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(/fonts/schibsted-grotesk-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
 /* ── Tokens ─────────────────────────────────────────────── */
 :root {
   --ink: #0F1E33;
@@ -17,7 +25,8 @@
   --red-tint: #FCEBEA;
   --green: #1C7C54;
   --green-tint: #E5F4EC;
-  --on-accent: #FFFFFF;       /* texte sur --blue et --orange */
+  --on-accent: #FFFFFF;       /* texte sur --blue */
+  --on-orange: #2B1500;       /* texte sur --orange (6,7:1) */
   --danger: #C62828; --on-danger: #FFFFFF;
   --on-ink: #FFFFFF;          /* texte sur fond --ink */
   --hover: #FAFBFD;
@@ -50,7 +59,7 @@
     --green: #52C490; --green-tint: #123223;
     --cm: #7FA9F7; --cm-bg: #1B2C4B; --td: #3FC4B6; --td-bg: #11302D; --tp: #A29BF0; --tp-bg: #272447;
     --exam: #FFA04D; --exam-bg: #3A2512; --proj: #6FB5DB; --proj-bg: #152C3B; --other: #9AA7BB; --other-bg: #1F2937;
-    --on-ink: #0D131C; --on-accent: #0D131C; --hover: #1A2331;
+    --on-ink: #0D131C; --on-accent: #0D131C; --on-orange: #2B1500; --hover: #1A2331;
     --err-bg: #2D1A19; --err-line: #5A2B28; --err-ink: #F4B1AB;
     --skel: #263143; --border-hover: #3C4B63;
     color-scheme: dark;
@@ -90,7 +99,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .nav a:hover { background: var(--paper); color: var(--ink); }
 .nav a[aria-current="page"] { background: var(--blue-tint); color: var(--blue-ink); }
 .nav a[aria-current="page"] svg { color: var(--blue); }
-.nav .count { margin-left: auto; font-size: 12px; font-weight: 600; min-width: 22px; padding: 1px 7px; border-radius: 20px; text-align: center; background: var(--orange); color: var(--on-accent); }
+.nav .count { margin-left: auto; font-size: 12px; font-weight: 600; min-width: 22px; padding: 1px 7px; border-radius: 20px; text-align: center; background: var(--orange); color: var(--on-orange); }
 .nav .count:empty { display: none; }
 .nav .count.calm { background: var(--line-2); color: var(--ink-2); }
 
@@ -132,8 +141,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .btn svg { width: 16px; height: 16px; }
 .btn.primary { background: var(--blue); border-color: var(--blue); color: var(--on-accent); }
 .btn.primary:hover { background: var(--blue-ink); border-color: var(--blue-ink); }
-.btn.hot { background: var(--orange); border-color: var(--orange); color: var(--on-accent); }
-.btn.hot:hover { background: var(--exam); }
+.btn.hot { background: var(--orange); border-color: var(--orange); color: var(--on-orange); }
+.btn.hot:hover { background: var(--exam); border-color: var(--exam); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--blue); padding-inline: 8px; }
 .btn.ghost:hover { background: var(--blue-tint); }
 .btn.icon { padding: 7px; }
@@ -189,7 +198,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .ev-CM { color: var(--cm); background: var(--cm-bg); }
 .ev-TD { color: var(--td); background: var(--td-bg); }
 .ev-TP { color: var(--tp); background: var(--tp-bg); }
-.ev-Examen { color: var(--exam); background: var(--exam-bg); }
+.ev-Examen { color: var(--orange-ink); background: var(--exam-bg); }
 .ev-Projet { color: var(--proj); background: var(--proj-bg); }
 /* ── Couleurs par matière (variable --sc posée en ligne) ── */
 .tag.subj { color: color-mix(in srgb, var(--sc) 58%, var(--ink)); background: color-mix(in srgb, var(--sc) 22%, var(--surface)); }
