@@ -168,12 +168,12 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .ev-Examen { color: var(--exam); background: var(--exam-bg); }
 .ev-Projet { color: var(--proj); background: var(--proj-bg); }
 /* ── Couleurs par matière (variable --sc posée en ligne) ── */
-.tag.subj { color: color-mix(in srgb, var(--sc) 58%, #000); background: color-mix(in srgb, var(--sc) 22%, #fff); }
-.strip-ev.subj, .wev.subj { border-left-color: var(--sc); background: color-mix(in srgb, var(--sc) 20%, #fff); }
-.strip-ev.subj.past { background: color-mix(in srgb, var(--sc) 8%, #fff); }
+.tag.subj { color: color-mix(in srgb, var(--sc) 58%, var(--ink)); background: color-mix(in srgb, var(--sc) 22%, var(--surface)); }
+.strip-ev.subj, .wev.subj { border-left-color: var(--sc); background: color-mix(in srgb, var(--sc) 20%, var(--surface)); }
+.strip-ev.subj.past { background: color-mix(in srgb, var(--sc) 8%, var(--surface)); }
 .course.subj { box-shadow: inset 4px 0 0 var(--sc); }
-.course.subj[aria-pressed="true"] { background: color-mix(in srgb, var(--sc) 16%, #fff); box-shadow: inset 4px 0 0 var(--sc); }
-.course.subj:hover { background: color-mix(in srgb, var(--sc) 10%, #fff); }
+.course.subj[aria-pressed="true"] { background: color-mix(in srgb, var(--sc) 16%, var(--surface)); box-shadow: inset 4px 0 0 var(--sc); }
+.course.subj:hover { background: color-mix(in srgb, var(--sc) 10%, var(--surface)); }
 .now-line { position: absolute; top: -6px; bottom: -6px; width: 2px; margin-left: -1px; background: var(--orange); border-radius: 2px; z-index: 2; }
 .now-line::before { content: ""; position: absolute; top: -4px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--orange); }
 .now-line span { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600; color: var(--orange-ink); background: var(--surface); padding: 0 4px; white-space: nowrap; }

@@ -149,36 +149,32 @@ function badges() {
 }
 
 /* ── Couleurs par matière ──────────────────────────────── */
-// Premier motif qui correspond (sans accents ni majuscules) : l'ordre compte.
-const SUBJECTS = [
-  { re: /\bsae\b/, name: "SAÉ", color: "#8A94A3" },
-  { re: /\bsql\b|base.? de donnee|\bbdd\b/, name: "SQL", color: "#EF8A8A" },
-  { re: /qualite/, name: "Qualité de dev", color: "#EB1E8C" },
-  { re: /efficace/, name: "Dev efficace", color: "#1FD655" },
-  { re: /systeme/, name: "Prog système", color: "#F28A1E" },
-  { re: /\bweb\b/, name: "Dev web", color: "#F2C500" },
-  { re: /communication/, name: "Communication pro", color: "#5A6B2A" },
-  { re: /\bdroit\b/, name: "Droit", color: "#2F6FE0" },
-  { re: /proba|statist/, name: "Probabilités", color: "#8ED381" },
-  { re: /manag|gestion/, name: "Management", color: "#8B4FD6" },
-  { re: /anglais|english/, name: "Anglais", color: "#F6A9CB" },
-  { re: /reseau/, name: "Réseaux", color: "#12AEC4" },
-  { re: /math|graphe|algebre/, name: "Maths", color: "#4C5BD4" },
-  { re: /cyber|securite/, name: "Sécurité", color: "#8D6A4F" },
-  { re: /donnee|\bia\b|intelligence/, name: "Données / IA", color: "#2A9D8F" },
-  { re: /objet|poo|java\b/, name: "Objet", color: "#C0527A" },
-  { re: /portfolio|ppp|projet pers|stage/, name: "Projet pro", color: "#6C7A89" },
-];
-const FALLBACK_COLORS = ["#B08968", "#6D9DC5", "#A3A847", "#C77DFF", "#43AA8B", "#E07A5F"];
+// Matières et couleurs de secours viennent de config.py (via /api/me), premier motif qui correspond : l'ordre compte.
+const DEFAULT_FALLBACK = "#8A94A3";
+let subjectCache = { me: null, list: [], fallback: [DEFAULT_FALLBACK] };
+function subjectConfig() {
+  const me = window.__me || {};
+  if (subjectCache.me !== me) {
+    const list = [];
+    for (const m of me.matieres || []) {
+      try { list.push({ re: new RegExp(m.motif), name: m.nom, color: m.couleur }); }
+      catch (e) { console.error(`Motif de matière invalide « ${m.motif} » :`, e.message); }
+    }
+    const fallback = (me.couleursSecours || []).length ? me.couleursSecours : [DEFAULT_FALLBACK];
+    subjectCache = { me, list, fallback };
+  }
+  return subjectCache;
+}
 const norm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 function subjectOf(...texts) {
+  const { list, fallback } = subjectConfig();
   const t = norm(texts.join(" "));
-  const hit = SUBJECTS.find((x) => x.re.test(t));
+  const hit = list.find((x) => x.re.test(t));
   if (hit) return hit;
   const code = (t.match(/\br\d\.\d+/) || [t])[0];
   let h = 0;
   for (const c of code) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return { name: "", color: FALLBACK_COLORS[h % FALLBACK_COLORS.length] };
+  return { name: "", color: fallback[h % fallback.length] };
 }
 const subjStyle = (sub) => `--sc:${sub.color}`;
 const subjTag = (sub, label) => `<span class="tag subj" style="${subjStyle(sub)}">${esc(label || sub.name)}</span>`;

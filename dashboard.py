@@ -9,6 +9,7 @@ import datetime as dt
 import json
 import mimetypes
 import os
+import re
 import sys
 import threading
 import traceback
@@ -115,9 +116,37 @@ def api_logout():
     return {"ok": True}
 
 
+HEX_COLOR = re.compile(r"#[0-9A-Fa-f]{6}")
+DEFAULT_SECOURS = ["#A58A73", "#7A9CB8", "#969956", "#AE67E4", "#529B85", "#CD8572"]  # si config.py n'en définit pas
+
+
+def _subject_config():
+    """MATIERES et COULEURS_SECOURS de config.py, validés (un ancien config.py sans ces lignes reste valide)."""
+    matieres = []
+    for i, m in enumerate(getattr(config, "MATIERES", []) or []):
+        try:
+            motif, nom, couleur = m["motif"], m.get("nom", ""), m["couleur"]
+            re.compile(motif)
+            if not HEX_COLOR.fullmatch(str(couleur)):
+                raise ValueError(f"couleur {couleur!r} invalide (format #RRGGBB attendu)")
+        except (re.error, ValueError, KeyError, TypeError, AttributeError) as e:
+            print(f"[config] MATIERES[{i}] ignorée : {e}", file=sys.stderr)
+            continue
+        matieres.append({"motif": motif, "nom": str(nom), "couleur": couleur})
+    secours = []
+    for c in getattr(config, "COULEURS_SECOURS", []) or []:
+        if isinstance(c, str) and HEX_COLOR.fullmatch(c):
+            secours.append(c)
+        else:
+            print(f"[config] COULEURS_SECOURS : {c!r} ignorée (format #RRGGBB attendu)", file=sys.stderr)
+    return matieres, secours or DEFAULT_SECOURS
+
+
 def api_me(_q):
     name = config.PRENOM
+    matieres, secours = _subject_config()
     return {
+        "matieres": matieres, "couleursSecours": secours,
         "prenom": name, "demo": DEMO, "loggedIn": logged_in(), "login": config.UNICA_LOGIN, "moodleUrl": config.MOODLE_URL,
         "sources": {
             "moodle": DEMO or bool(config.MOODLE_TOKEN or (config.UNICA_LOGIN and config.UNICA_PASSWORD)),

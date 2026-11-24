@@ -50,3 +50,27 @@ OUVRIR_NAVIGATEUR = True
 CACHE_PLANNING = 15 * 60
 CACHE_MOODLE = 10 * 60
 CACHE_MAILS = 2 * 60
+
+# ── Couleurs par matière ─────────────────────────────────────
+# motif = expression régulière, sans accents ni majuscules, la première qui correspond gagne.
+# Une matière sans motif correspondant prend une couleur de COULEURS_SECOURS.
+MATIERES = [
+    {"motif": r"\bsae\b", "nom": "SAÉ", "couleur": "#8E959F"},
+    {"motif": r"\bsql\b|base.? de donnee|\bbdd\b", "nom": "SQL", "couleur": "#D57676"},
+    {"motif": r"qualite", "nom": "Qualité de dev", "couleur": "#CC3D8A"},
+    {"motif": r"efficace", "nom": "Dev efficace", "couleur": "#3ABB60"},
+    {"motif": r"systeme", "nom": "Prog système", "couleur": "#D2893E"},
+    {"motif": r"\bweb\b", "nom": "Dev web", "couleur": "#CEAE24"},
+    {"motif": r"communication", "nom": "Communication pro", "couleur": "#839650"},
+    {"motif": r"\bdroit\b", "nom": "Droit", "couleur": "#4A76C5"},
+    {"motif": r"proba|statist", "nom": "Probabilités", "couleur": "#91C488"},
+    {"motif": r"manag|gestion", "nom": "Management", "couleur": "#8D63C2"},
+    {"motif": r"anglais|english", "nom": "Anglais", "couleur": "#D873A0"},
+    {"motif": r"reseau", "nom": "Réseaux", "couleur": "#30A5B6"},
+    {"motif": r"math|graphe|algebre", "nom": "Maths", "couleur": "#606BC0"},
+    {"motif": r"cyber|securite", "nom": "Sécurité", "couleur": "#89705C"},
+    {"motif": r"donnee|\bia\b|intelligence", "nom": "Données / IA", "couleur": "#44A196"},
+    {"motif": r"objet|poo|java\b", "nom": "Objet", "couleur": "#B0627E"},
+    {"motif": r"portfolio|ppp|projet pers|stage", "nom": "Projet pro", "couleur": "#707A85"},
+]
+COULEURS_SECOURS = ["#A58A73", "#7A9CB8", "#969956", "#AE67E4", "#529B85", "#CD8572"]

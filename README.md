@@ -58,6 +58,15 @@ Ta messagerie `@etu.unice.fr` est sur Microsoft 365, qui **refuse le mot de pass
 
 Le jeton se renouvelle ensuite tout seul (environ 90 jours sans utilisation avant expiration). Microsoft n'autorise pas de retour automatique vers le dashboard pour cette application, d'où le collage.
 
+### Couleurs par matière
+
+Les couleurs se règlent dans `config.py`, section `MATIERES` (copie-la depuis `config-exemple.py`) : une liste de `{"motif": "...", "nom": "...", "couleur": "#RRGGBB"}`.
+
+- `motif` est une expression régulière, **sans accents ni majuscules** ; la première qui correspond gagne, donc l'ordre compte.
+- Une matière sans motif correspondant prend une couleur de `COULEURS_SECOURS`, choisie d'après son code (R3.01, etc.).
+- Un motif invalide ou une couleur qui n'est pas au format `#RRGGBB` est ignoré, avec un message dans la console : le dashboard démarre quand même.
+- Sans ces lignes dans `config.py` (ancien fichier), tout fonctionne avec les couleurs de secours par défaut. Avec `MATIERES = []`, toutes les matières prennent ces couleurs.
+
 ## 3. Lancer
 
 | Système | Commande |
