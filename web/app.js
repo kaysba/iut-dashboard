@@ -786,7 +786,7 @@ async function viewHome() {
   assignments().then((list) => {
     const now = Date.now() / 1000;
     const todo = list.filter((a) => a.status !== "rendu" && a.due && a.due > now - 7 * 86400)
-      .sort((a, b) => a.due - b.due).slice(0, 6);
+      .sort((a, b) => a.due - b.due).slice(0, 3);
     $("#home-due").innerHTML = todo.length ? `<div class="due-list">${todo.map(dueRow).join("")}</div>`
       : '<div class="empty">Rien à rendre pour le moment.</div>';
   }).catch((e) => { $("#home-due").innerHTML = errorBox(e, "Moodle"); });
