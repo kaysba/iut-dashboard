@@ -102,6 +102,24 @@ class Notes:
             raw = self._get(self._query("relevéEtudiant", semestre=semestre_id))
         return {"semestres": self._semestres, "releve": normaliser_releve(_releve(raw), self._message)}
 
+    def pdf(self, semestre_id):
+        """Relevé officiel au format PDF (services/bulletin_PDF.php de la passerelle), en mémoire."""
+        if not (self._password or self._has_cookie()):
+            raise SourceError(LOGIN_REQUIRED)
+        query = urllib.parse.urlencode({"sem_id": semestre_id, "type": getattr(self.cfg, "NOTES_PDF_TYPE", "short")})
+        for attempt in (0, 1):
+            try:
+                _, _, _, body = self.session.request(f"{self.base}/services/bulletin_PDF.php?{query}")
+            except OSError as e:
+                raise SourceError(f"Passerelle de notes injoignable : {e}")
+            if body.startswith(b"%PDF"):
+                return body
+            head = body[:300].decode("utf-8", "replace").lstrip()
+            if attempt == 0 and (head.startswith("{") or head.lower().startswith(("<!doctype", "<html"))):
+                self.login()   # session expirée (JSON « redirect » ou page du CAS) : une reconnexion, puis on réessaie
+                continue
+            raise SourceError(("La passerelle a refusé le PDF : " + head[:200]) if head else "La passerelle n'a pas renvoyé de PDF.")
+
     def _remember(self, raw):
         self._semestres = normaliser_semestres(raw.get("semestres") or [])
         self._message = str((raw.get("config") or {}).get("message_non_publication_releve") or "")

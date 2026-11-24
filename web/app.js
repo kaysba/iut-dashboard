@@ -789,7 +789,22 @@ async function viewNotes() {
   const r = d.releve;
   $("#n-tools").innerHTML = `<select class="select" id="n-sem" aria-label="Semestre">${d.semestres.slice().reverse().map((s) =>
     `<option value="${s.id}"${s.id === cur ? " selected" : ""}>${esc(s.nom)}${s.actuel ? " (en cours)" : ""}</option>`).join("")}</select>
-    <div class="seg" role="group" aria-label="Affichage"><button type="button" data-v="ue" aria-pressed="${notesUi.view === "ue"}">Par UE</button><button type="button" data-v="mod" aria-pressed="${notesUi.view === "mod"}">Par matière</button></div>`;
+    <div class="seg" role="group" aria-label="Affichage"><button type="button" data-v="ue" aria-pressed="${notesUi.view === "ue"}">Par UE</button><button type="button" data-v="mod" aria-pressed="${notesUi.view === "mod"}">Par matière</button></div>
+    <button class="btn" type="button" id="n-pdf" title="Relevé officiel de la passerelle">${ICON.dl}Relevé PDF officiel</button>`;
+  $("#n-pdf").addEventListener("click", async (ev) => {
+    const b = ev.currentTarget;
+    b.disabled = true;
+    try {
+      const r = await fetch(`/api/notes/pdf?semestre=${cur}`);
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(await r.blob());
+      a.download = `releve-notes-semestre-${r.headers.get("Content-Disposition")?.match(/notes-(\d+)/)?.[1] || cur}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    } catch (e) { toast(e.message); } finally { b.disabled = false; }
+  });
+  $("#n-sub").textContent = `${(d.semestres.find((x) => x.id === cur) || {}).nom || ""} · relevé de notes`;
   $("#n-sem").addEventListener("change", (ev) => {
     const sel = d.semestres.find((s) => s.id === +ev.target.value);
     notesUi.sem = sel && !sel.actuel ? sel.id : null;
@@ -912,6 +927,15 @@ function start() {
   route();
   badges();
 }
+
+/* ── Thème clair / sombre (mémorisé dans localStorage, clair par défaut) ── */
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $("#theme-label").textContent = t === "dark" ? "Thème clair" : "Thème sombre";
+  try { localStorage.setItem("theme", t); } catch { /* stockage indisponible */ }
+}
+$("#theme-label").textContent = document.documentElement.dataset.theme === "dark" ? "Thème clair" : "Thème sombre";
+$("#theme").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
 
 $("#logout").addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" });

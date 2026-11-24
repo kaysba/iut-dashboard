@@ -44,6 +44,8 @@ MS_REDIRECT_URI = "https://localhost"
 
 # ── Notes (Passerelle ScoDoc de l'IUT) ───────────────────────
 NOTES_URL = "https://iut-notes.unice.fr"
+# Type de relevé PDF demandé à la passerelle (paramètre « type » de services/bulletin_PDF.php).
+NOTES_PDF_TYPE = "short"
 
 # ── Serveur local ────────────────────────────────────────────
 PORT = 8765

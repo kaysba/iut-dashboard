@@ -39,21 +39,7 @@
   --font: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* ── Thème sombre : suit le système, ou data-theme="dark" / "light" sur <html> ── */
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { 
-    --ink: #E8EDF5; --ink-2: #C3CCDA; --muted: #9AA7BB;
-    --paper: #0D131C; --surface: #151D29; --line: #2A3649; --line-2: #1F2937;
-    --blue: #6FA0F5; --blue-ink: #B4CDFA; --blue-tint: #1B2C4B;
-    --orange: #FF9A3C; --orange-ink: #FFB873; --orange-tint: #3A2512;
-    --red: #F4857C; --red-tint: #3C1D1B;
-    --green: #52C490; --green-tint: #123223;
-    --cm: #7FA9F7; --cm-bg: #1B2C4B; --td: #3FC4B6; --td-bg: #11302D; --tp: #A29BF0; --tp-bg: #272447;
-    --exam: #FFA04D; --exam-bg: #3A2512; --proj: #6FB5DB; --proj-bg: #152C3B; --other: #9AA7BB; --other-bg: #1F2937;
-    --on-ink: #0D131C; --on-accent: #0D131C; --hover: #1A2331;
-    --err-bg: #2D1A19; --err-line: #5A2B28; --err-ink: #F4B1AB;
-    --skel: #263143; --border-hover: #3C4B63;
-    color-scheme: dark;
-   } }
+/* ── Thème sombre : data-theme="dark" sur <html> (choisi avec le bouton de la barre latérale) ── */
 :root[data-theme="dark"] { 
     --ink: #E8EDF5; --ink-2: #C3CCDA; --muted: #9AA7BB;
     --paper: #0D131C; --surface: #151D29; --line: #2A3649; --line-2: #1F2937;
@@ -123,7 +109,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .refresh.spin svg { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.main { padding: 34px 44px 60px; max-width: 1240px; width: 100%; outline: none; }
+.main { padding: 34px 44px 60px; width: 100%; min-width: 0; outline: none; }
 
 /* ── En-têtes de page ───────────────────────────────────── */
 .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 26px; flex-wrap: wrap; }
@@ -572,3 +558,10 @@ body.modal-open { overflow: hidden; }
   .n-sec-head .avg { font-size: 22px; }
   .head h1 { font-size: 25px; }
 }
+
+/* ── Bouton de thème ────────────────────────────────────── */
+.theme-btn { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.theme-btn svg { width: 16px; height: 16px; }
+.theme-btn .moon { display: none; }
+:root[data-theme="dark"] .theme-btn .sun { display: none; }
+:root[data-theme="dark"] .theme-btn .moon { display: inline; }

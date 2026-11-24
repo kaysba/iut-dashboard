@@ -29,9 +29,14 @@ class FakeSession:
         self.logged = logged
         self.calls = []
         self.jar = []
+        self.pdf_body = b"%PDF-1.4 fake"
 
     def request(self, url, data=None, **kw):
         self.calls.append(url)
+        if "bulletin_PDF.php" in url:
+            if not self.logged:
+                return 200, url, {}, b'{"redirect": "https://cas.test/login"}'
+            return 200, url, {}, self.pdf_body
         if "doAuth.php" in url:
             self.logged = True
             return 200, BASE + "/", {}, b"<html></html>"
@@ -45,7 +50,8 @@ class FakeSession:
         raise AssertionError(f"requête inattendue : {url}")
 
     def names(self):
-        return [("auth" if "doAuth" in u else u.split("q=")[1].split("&")[0]) for u in self.calls]
+        return [("auth" if "doAuth" in u else "pdf" if "bulletin_PDF" in u else u.split("q=")[1].split("&")[0])
+                for u in self.calls]
 
 
 def make_notes(answers, logged=True, password="secret"):
@@ -192,6 +198,23 @@ class ConnexionTest(unittest.TestCase):
         n = make_notes({"dataPremi": self.PREMIERE, "relev%C3%A9Etudiant": {"relevé": {"publie": False}}})
         n.donnees(7)
         self.assertTrue(any("q=relev%C3%A9Etudiant&semestre=7" in u for u in n.session.calls))
+
+    def test_pdf(self):
+        n = make_notes({})
+        self.assertTrue(n.pdf(189).startswith(b"%PDF"))
+        self.assertIn("/services/bulletin_PDF.php?sem_id=189&type=short", n.session.calls[0])
+
+    def test_pdf_reconnexion(self):
+        n = make_notes({}, logged=False)
+        self.assertTrue(n.pdf(189).startswith(b"%PDF"))
+        self.assertEqual(n.session.names(), ["pdf", "auth", "donn%C3%A9esAuthentification", "pdf"])
+
+    def test_pdf_refuse(self):
+        n = make_notes({})
+        n.session.pdf_body = "Relevé PDF non disponible pour ton département".encode()
+        with self.assertRaises(SourceError) as cm:
+            n.pdf(189)
+        self.assertIn("non disponible", str(cm.exception))
 
     def test_oubli_efface_tout(self):
         n = make_notes({"dataPremi": self.PREMIERE})

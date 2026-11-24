@@ -292,7 +292,7 @@ class Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlsplit(self.path)
         q = urllib.parse.parse_qs(url.query)
         force = q.get("refresh", ["0"])[0] == "1"
-        if (url.path in ROUTES or url.path in ("/api/file", "/api/mail/auth-url")) and not logged_in():
+        if (url.path in ROUTES or url.path in ("/api/file", "/api/mail/auth-url", "/api/notes/pdf")) and not logged_in():
             return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
         try:
             if url.path == "/api/me":
@@ -303,6 +303,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"url": outlook.auth_url()})
             if url.path == "/api/file":
                 return self._file(q.get("u", [""])[0])
+            if url.path == "/api/notes/pdf":
+                return self._notes_pdf(q.get("semestre", [""])[0])
         except Exception as e:  # noqa: BLE001
             return self._error(e)
         return self._static(url.path)
@@ -338,6 +340,20 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             return self._error(e)
         self.send_error(404)
+
+    def _notes_pdf(self, sid):
+        if DEMO:
+            raise SourceError("Le relevé PDF officiel n'est pas disponible en mode démo.")
+        if not sid.isdigit():
+            raise SourceError("Semestre invalide.")
+        body = notes.pdf(int(sid))
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", f'attachment; filename="releve-notes-{sid}.pdf"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _file(self, fileurl):
         url = moodle.file_url(fileurl)
