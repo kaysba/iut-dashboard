@@ -16,6 +16,7 @@ import traceback
 import urllib.parse
 import urllib.request
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 if sys.version_info < (3, 8):
@@ -24,8 +25,9 @@ if sys.version_info < (3, 8):
 import config
 from sources import demo
 from sources.ade import ADE
-from sources.common import UA, SourceError, TTLCache, delete_secret, load_secret, save_secret
+from sources.common import UA, Session, SourceError, TTLCache, delete_secret, load_secret, save_secret
 from sources.moodle import Moodle
+from sources.notes import Notes
 from sources.outlook import Outlook
 
 DEMO = "--demo" in sys.argv
@@ -33,7 +35,9 @@ DEMO = "--demo" in sys.argv
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
-moodle = Moodle(config)
+sso_session = Session()   # Moodle et Notes partagent les cookies du CAS
+moodle = Moodle(config, sso_session)
+notes = Notes(config, sso_session)
 ade = ADE(config)
 outlook = Outlook(config)
 cache = TTLCache()
@@ -84,15 +88,35 @@ def api_login(payload):
     moodle.set_credentials(login, pw)
     if pw:
         delete_secret("moodle_token.json")
-    try:
+
+    def moodle_login():
         moodle.token()
         moodle.site()
+
+    # Moodle et Notes se connectent en parallèle ; un échec de Notes ne bloque pas la connexion
+    # (il apparaît comme erreur de la source « Notes » dans la barre latérale).
+    pool = ThreadPoolExecutor(max_workers=1)
+    notes_job = pool.submit(notes.login, login, pw) if pw and not DEMO else None
+    ok = False
+    try:
+        moodle_login()
+        ok = True
     except OSError as e:
         moodle.set_credentials("", "")
         raise SourceError(f"Moodle injoignable : {e}")
     except SourceError:
         moodle.set_credentials("", "")
         raise
+    finally:
+        if notes_job:
+            try:
+                notes_job.result()
+            except Exception as e:  # noqa: BLE001
+                print(f"[notes] connexion impossible : {e}", file=sys.stderr)
+        pool.shutdown()
+        if not ok:
+            notes.forget()
+            sso_session.jar.clear()
     moodle.password = ""          # plus nécessaire en mémoire une fois le jeton obtenu
     config.UNICA_PASSWORD = ""
     if remember:
@@ -109,6 +133,8 @@ def api_logout():
     SESSION["ok"] = False
     moodle.set_credentials("", "")
     outlook._pending = None
+    notes.forget()          # mot de passe et cookies de la passerelle
+    sso_session.jar.clear()
     config.UNICA_LOGIN = config.UNICA_PASSWORD = ""
     for name in SESSION_FILES:
         delete_secret(name)
@@ -152,6 +178,7 @@ def api_me(_q):
             "moodle": DEMO or bool(config.MOODLE_TOKEN or (config.UNICA_LOGIN and config.UNICA_PASSWORD)),
             "ade": DEMO or bool(config.ADE_ICAL_URL),
             "mail": DEMO or outlook.connected(),
+            "notes": DEMO or notes.has_password(),
         },
         "mail": outlook.address,
     }
@@ -194,7 +221,29 @@ def api_mails(_q, force):
     return cache.get("mail", config.CACHE_MAILS, outlook.messages, force)
 
 
+def api_notes(q, force):
+    sid = q.get("semestre", [""])[0]
+    if sid and not sid.isdigit():
+        raise SourceError("Semestre invalide.")
+    sid = int(sid) if sid else None
+    if DEMO:
+        return demo.notes(sid)
+    ttl = getattr(config, "CACHE_NOTES", 15 * 60)
+    return cache.get(f"notes:{sid}", ttl, lambda: notes.donnees(sid), force)
+
+
+def api_notes_login(payload):
+    """Après une relance avec « Se souvenir de moi », il n'y a plus de mot de passe en mémoire."""
+    pw = payload.get("password") or ""
+    if not pw:
+        raise SourceError("Entre ton mot de passe.")
+    notes.login(config.UNICA_LOGIN, pw)
+    cache.clear()
+    return {"ok": True}
+
+
 ROUTES = {
+    "/api/notes": api_notes,
     "/api/planning": api_planning,
     "/api/resources": api_resources,
     "/api/assignments": api_assignments,
@@ -228,6 +277,8 @@ class Handler(BaseHTTPRequestHandler):
         if msg == "SESSION_EXPIRED":
             SESSION["ok"] = False
             return self._json({"error": "Ta session a expiré. Reconnecte-toi.", "code": "login_required"}, 401)
+        if msg == "NOTES_LOGIN_REQUIRED":
+            return self._json({"error": "Entre ton mot de passe pour afficher tes notes.", "code": "notes_login_required"}, 401)
         if msg == "NOT_CONNECTED":
             return self._json({"error": "Outlook n'est pas connecté.", "code": "mail_not_connected"}, 401)
         if not isinstance(e, SourceError):
@@ -272,6 +323,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(api_login(payload))
             if self.path == "/api/logout":
                 return self._json(api_logout())
+            if self.path == "/api/notes/login":
+                if not logged_in():
+                    return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
+                return self._json(api_notes_login(payload))
             if self.path == "/api/mail/finish":
                 outlook.finish_auth(payload.get("url", ""))
                 cache.clear()

@@ -140,3 +140,124 @@ def mails():
              "body": sn + "…\n\nCeci est un mail de démonstration : le texte complet d'un vrai mail s'afficherait ici.\n\nCordialement,\n" + f}
             for (f, s, sn, hrs, u, a) in rows]
     return {"unread": 3, "messages": msgs, "webmail": "https://outlook.office.com/mail/inbox"}
+
+
+# ── Notes ───────────────────────────────────────────────────
+# Même format que sources.notes.Notes.donnees() : le front ne voit pas la différence.
+_SEMESTRES = [(41, 1, "2025/2026"), (120, 2, "2025/2026"), (189, 3, "2026/2027")]
+_UE_TITRES = ["Réaliser", "Optimiser", "Administrer", "Gérer", "Conduire", "Collaborer"]
+_UE_COULEURS = ["#B80004", "#EC7F00", "#00A3A3", "#7D3FC0", "#2E8B57", "#2367D1"]
+
+# module : (code, titre, type, {numéro d'UE: coef}, [(évaluation, il y a N jours, note ou None, coef)])
+_MODULES = {
+    3: [
+        ("R3.01", "Développement web", "ressource", {1: 15, 4: 10},
+         [("DS PHP", 21, 15.5, .4), ("TP1 Panier", 9, 17, .3), ("TP2 Sessions", 2, 16, .3)]),
+        ("R3.02", "Qualité de développement", "ressource", {1: 10, 2: 8},
+         [("TP Tests unitaires", 20, 13.5, .5), ("DS Qualité", -6, None, .5)]),
+        ("R3.05", "Programmation système", "ressource", {2: 15, 3: 8},
+         [("TP1 Processus", 24, 14, .5), ("DS Système", 11, 11.5, .5)]),
+        ("R3.06", "Architecture des réseaux", "ressource", {3: 15, 5: 10},
+         [("DS Réseaux", 3, 9.5, .6), ("TP OSPF", 12, 13, .4)]),
+        ("R3.07", "SQL dans un langage de programmation", "ressource", {2: 10, 4: 12},
+         [("TP Jointures", 15, 15, .5), ("DS SQL", 5, 17.5, .5)]),
+        ("R3.08", "Probabilités", "ressource", {5: 15},
+         [("DS1", 18, 8.5, .5), ("DS2", -9, None, .5)]),
+        ("R3.09", "Cryptographie et sécurité", "ressource", {3: 8, 5: 6}, []),
+        ("R3.10", "Management des systèmes d'information", "ressource", {4: 10, 6: 12},
+         [("Étude de cas", 14, 7, 1)]),
+        ("R3.11", "Droit des contrats et du numérique", "ressource", {6: 8},
+         [("QCM Droit", 16, 6.5, 1)]),
+        ("R3.12", "Anglais", "ressource", {6: 15},
+         [("Oral", 22, 5.5, .5), ("Compréhension écrite", 7, 8, .5)]),
+        ("R3.13", "Communication professionnelle", "ressource", {6: 10},
+         [("Dossier", 13, 9, 1)]),
+        ("SAÉ3.01", "Développement d'une application", "sae", {1: 40, 2: 20, 4: 20},
+         [("Soutenance intermédiaire", 10, 16, 1)]),
+    ],
+    2: [
+        ("R2.01", "Développement orienté objets", "ressource", {1: 12, 4: 8}, [("TP Java", 150, 14, .5), ("DS POO", 140, 12.5, .5)]),
+        ("R2.02", "Développement d'applications avec IHM", "ressource", {1: 10}, [("TP Interfaces", 145, 15.5, 1)]),
+        ("R2.03", "Qualité de développement", "ressource", {2: 10, 4: 6}, [("TP Git", 160, 13, 1)]),
+        ("R2.05", "Introduction aux services réseaux", "ressource", {3: 12, 5: 8}, [("DS Réseaux", 130, 10.5, 1)]),
+        ("R2.06", "Exploitation d'une base de données", "ressource", {2: 12, 3: 6}, [("TP SQL", 135, 14.5, .5), ("DS SQL", 128, 12, .5)]),
+        ("R2.08", "Outils numériques pour les statistiques", "ressource", {5: 10}, [("TP Stats", 125, None, 1)]),
+        ("R2.11", "Droit des contrats et du numérique", "ressource", {6: 8}, [("QCM", 120, 11, 1)]),
+        ("R2.12", "Anglais", "ressource", {6: 10}, [("Oral", 118, 13.5, 1)]),
+        ("SAÉ2.01", "Développement d'une application", "sae", {1: 30, 2: 15, 3: 10}, [("Soutenance", 110, 15, 1)]),
+    ],
+    1: [
+        ("R1.01", "Initiation au développement", "ressource", {1: 15, 2: 6}, [("DS Algo", 300, 13, .5), ("TP Python", 290, 15, .5)]),
+        ("R1.02", "Développement d'interfaces web", "ressource", {1: 10}, [("TP HTML/CSS", 285, 16, 1)]),
+        ("R1.03", "Introduction à l'architecture des ordinateurs", "ressource", {3: 12}, [("DS Archi", 280, 8.5, 1)]),
+        ("R1.05", "Introduction aux systèmes d'exploitation", "ressource", {3: 10, 2: 6}, [("TP Shell", 270, 11, 1)]),
+        ("R1.06", "Mathématiques discrètes", "ressource", {5: 12}, [("DS Maths", 265, 9, 1)]),
+        ("R1.10", "Anglais", "ressource", {6: 10}, [("Oral", 260, 12.5, 1)]),
+        ("SAÉ1.01", "Implémentation d'un besoin client", "sae", {1: 30, 4: 15}, [("Soutenance", 255, 14, 1)]),
+    ],
+}
+
+# Par semestre : (options affichées, rangs semestre + UE) ; None = masqué.
+_DEMO_RANGS = {
+    3: {"sem": (2, 57), "ue": [(1, 57), (2, 57), (3, 57), (9, 57), (31, 57), (48, 57)]},
+    2: {"sem": None, "ue": [None] * 6},
+    1: {"sem": (14, 58), "ue": [(5, 58), (17, 58), (3, 58), (22, 58), (8, 58), (31, 58)]},
+}
+_DEMO_PROMO = {3: True, 2: False, 1: True}
+
+
+def _avg(pairs):
+    pairs = [(v, c) for v, c in pairs if v is not None]
+    tot = sum(c for _, c in pairs)
+    return round(sum(v * c for v, c in pairs) / tot, 2) if tot else None
+
+
+def _promo(v, on):
+    if not on or v is None:
+        return {"min": None, "moy": None, "max": None}
+    moy = round(0.55 * v + 4.6, 2)
+    return {"min": round(max(0, moy - 6.5), 2), "moy": moy, "max": round(min(20, moy + 4.5), 2)}
+
+
+def _releve_demo(num):
+    today = dt.date.today()
+    rangs, promo = _DEMO_RANGS[num], _DEMO_PROMO[num]
+    options = {"rangs": rangs["sem"] is not None, "rangs_ue": rangs["ue"][0] is not None,
+               "rangs_modules": rangs["sem"] is not None, "promo": promo}
+    modules, mod_moy = [], {}
+    for code, titre, typ, _, evals in _MODULES[num]:
+        evs = [{"id": num * 1000 + len(modules) * 10 + i, "titre": t,
+                "date": (today - dt.timedelta(days=d)).isoformat(), "coef": c, "note": n,
+                **_promo(n, promo), "poids": {f"UE{num}.{u}": 1 for u in _MODULES[num][len(modules)][3]}}
+               for i, (t, d, n, c) in enumerate(evals)]
+        moy = _avg([(e["note"], e["coef"]) for e in evs])
+        mod_moy[code] = moy
+        modules.append({"code": code, "titre": titre, "type": typ, "moyenne": moy,
+                        "rang": None, "total": None, **_promo(moy, promo), "evaluations": evs})
+    ues = []
+    for u in range(1, 7):
+        mods = [{"code": c, "titre": t, "type": ty, "coef": coefs[u], "moyenne": mod_moy[c]}
+                for c, t, ty, coefs, _ in _MODULES[num] if u in coefs]
+        moy = _avg([(m["moyenne"], m["coef"]) for m in mods])
+        r = rangs["ue"][u - 1]
+        ues.append({"code": f"UE{num}.{u}", "titre": _UE_TITRES[u - 1], "couleur": _UE_COULEURS[u - 1],
+                    "moyenne": moy, "rang": r[0] if r else None, "total": r[1] if r else None,
+                    **_promo(moy, promo), "bonus": 0.0, "malus": 0.0,
+                    "ects_acquis": 0.0 if num == 3 else 5.0, "ects_total": 5.0, "modules": mods})
+    ues[1]["bonus"] = 0.15 if num == 3 else 0.0   # un petit bonus d'UE, pour l'affichage
+    sem = _avg([(u["moyenne"], 1) for u in ues])
+    rs = rangs["sem"]
+    return {"publie": True, "message": "", "options": options,
+            "semestre": {"numero": num, "moyenne": sem, "rang": rs[0] if rs else None, "total": rs[1] if rs else None,
+                         **_promo(sem, promo), "ects_acquis": 0.0 if num == 3 else 30.0, "ects_total": 30.0,
+                         "bonus": 0.1 if num == 3 else None,   # venue de l'UE « bonus » du semestre
+                         "absences": {"total": 3.0, "injustifiees": 1.0, "unite": "Heure(s)"} if num == 3
+                         else {"total": 0.0, "injustifiees": 0.0, "unite": "Heure(s)"}},
+            "ues": ues, "modules": modules}
+
+
+def notes(semestre_id=None):
+    semestres = [{"id": i, "nom": f"Semestre {n} ({a})", "actuel": k == len(_SEMESTRES) - 1}
+                 for k, (i, n, a) in enumerate(_SEMESTRES)]
+    num = next((n for i, n, _ in _SEMESTRES if i == semestre_id), _SEMESTRES[-1][1])
+    return {"semestres": semestres, "releve": _releve_demo(num)}

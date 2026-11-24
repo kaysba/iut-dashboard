@@ -42,6 +42,9 @@ MS_TENANT = "organizations"
 # Adresse de retour acceptée par Microsoft pour cette application (ne pas changer).
 MS_REDIRECT_URI = "https://localhost"
 
+# ── Notes (Passerelle ScoDoc de l'IUT) ───────────────────────
+NOTES_URL = "https://iut-notes.unice.fr"
+
 # ── Serveur local ────────────────────────────────────────────
 PORT = 8765
 OUVRIR_NAVIGATEUR = True
@@ -50,6 +53,7 @@ OUVRIR_NAVIGATEUR = True
 CACHE_PLANNING = 15 * 60
 CACHE_MOODLE = 10 * 60
 CACHE_MAILS = 2 * 60
+CACHE_NOTES = 15 * 60
 
 # ── Couleurs par matière ─────────────────────────────────────
 # motif = expression régulière, sans accents ni majuscules, la première qui correspond gagne.

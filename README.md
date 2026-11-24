@@ -58,6 +58,16 @@ Ta messagerie `@etu.unice.fr` est sur Microsoft 365, qui **refuse le mot de pass
 
 Le jeton se renouvelle ensuite tout seul (environ 90 jours sans utilisation avant expiration). Microsoft n'autorise pas de retour automatique vers le dashboard pour cette application, d'où le collage.
 
+### Notes (Passerelle ScoDoc)
+
+Les notes viennent de la passerelle de l'IUT (`https://iut-notes.unice.fr`). Aucun réglage n'est obligatoire : `config-exemple.py` contient `NOTES_URL` et `CACHE_NOTES` (durée du cache, 15 minutes par défaut).
+
+- À la connexion, le dashboard ouvre aussi la session des notes avec le même compte UniCA (même cookie CAS que Moodle, le mot de passe n'est envoyé qu'une fois).
+- **Rien n'est écrit sur le disque** : ni notes, ni mot de passe. Le mot de passe reste en mémoire tant que le serveur tourne (pour rouvrir la session quand elle expire) et s'efface à la déconnexion.
+- Après une relance avec « Se souvenir de moi », il n'y a plus de mot de passe : la carte Notes demande « Mot de passe pour afficher tes notes ».
+- Le dashboard respecte les options de ton département : si la promo ou les rangs sont masqués dans le relevé officiel, ils le sont aussi ici.
+- Un échec de connexion aux notes ne bloque pas Moodle : il s'affiche comme erreur de la source « Notes » dans la barre latérale.
+
 ### Couleurs par matière
 
 Les couleurs se règlent dans `config.py`, section `MATIERES` (copie-la depuis `config-exemple.py`) : une liste de `{"motif": "...", "nom": "...", "couleur": "#RRGGBB"}`.
@@ -82,12 +92,14 @@ Options : `--demo`, `--no-browser`, `--verbose`.
 - **Planning** : vue jour ou semaine, navigation semaine précédente / suivante.
 - **Ressources** : tous les documents de tes cours, filtrables (Cours, TD, TP, Examens), groupés par section Moodle ou par type, avec recherche. Le bouton de téléchargement passe par le serveur local, donc pas besoin d'être connecté à Moodle dans le navigateur.
 - **Devoirs** : en retard, cette semaine, plus tard, déjà rendus. **Déposer** ouvre directement la page de dépôt Moodle.
+- **Notes** : moyenne, rang et UE du semestre (par UE ou par matière, avec toutes les évaluations). Les nouvelles notes sont signalées.
 - **Mails** : 25 derniers mails de la boîte de réception.
 
 ## Sécurité
 
 - `config.py` et `.cache/` (jetons) sont dans `.gitignore`. Vérifie avec `git status` avant chaque push.
 - Le serveur n'écoute que sur `127.0.0.1` et refuse les requêtes qui ne viennent pas de `localhost`.
+- Les tests utilisent `tests/fixtures/notes_reel_anonyme.json`, une vraie réponse anonymisée : elle est ignorée par git (`.gitignore`), ne la partage pas. Lancer les tests : `python3 -m unittest discover tests`.
 - Pour tout réinitialiser : supprime le dossier `.cache/`.
 
 ## Dépannage

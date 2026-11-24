@@ -19,6 +19,8 @@ const ICON = {
   assign: '<svg viewBox="0 0 24 24"><path d="M12 15V4.5M7.5 9 12 4.5 16.5 9M5 15.5v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></svg>',
   quiz: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M9.8 9.6a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.5v.4M12 16.6v.1"/></svg>',
   forum: '<svg viewBox="0 0 24 24"><path d="M5 5.5h11a1.5 1.5 0 0 1 1.5 1.5v6.5A1.5 1.5 0 0 1 16 15H10l-4 3.5V15H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5z"/></svg>',
+  trophy: '<svg viewBox="0 0 24 24"><path d="M8 4.5h8v5a4 4 0 0 1-8 0zM8 6.5H5v1.5a3 3 0 0 0 3 3M16 6.5h3v1.5a3 3 0 0 1-3 3M12 13.5v3.5M8.5 19.5h7M10 17h4"/></svg>',
+  medal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="14.5" r="4.5"/><path d="m9 10.2-2.5-6h4l1.5 3M15 10.2l2.5-6h-4L12 7.5"/></svg>',
   video: '<svg viewBox="0 0 24 24"><rect x="3.5" y="6" width="12" height="12" rx="2"/><path d="m15.5 10.5 5-3v9l-5-3"/></svg>',
 };
 
@@ -74,7 +76,7 @@ function ago(ts) {
 
 /* ── API ───────────────────────────────────────────────── */
 const store = {};
-const status = { moodle: "idle", ade: "idle", mail: "idle" };
+const status = { moodle: "idle", ade: "idle", notes: "idle", mail: "idle" };
 let forceNext = false;
 
 async function api(path, { maxAge = 300000, source } = {}) {
@@ -95,7 +97,7 @@ async function api(path, { maxAge = 300000, source } = {}) {
     .catch((e) => {
       delete store[path];
       if (e.code === "login_required") { showLogin("Ta session a expiré. Reconnecte-toi."); throw e; }
-      if (source) setStatus(source, e.code === "mail_not_connected" ? "off" : "err", e.message);
+      if (source) setStatus(source, e.code === "mail_not_connected" || e.code === "notes_login_required" ? "off" : "err", e.message);
       throw e;
     });
   store[path] = { t: Date.now(), p };
@@ -105,7 +107,7 @@ async function api(path, { maxAge = 300000, source } = {}) {
 
 function setStatus(src, s, msg) {
   status[src] = s;
-  const labels = { moodle: "Moodle", ade: "Emploi du temps", mail: "Outlook" };
+  const labels = { moodle: "Moodle", ade: "Emploi du temps", notes: "Notes", mail: "Outlook" };
   const text = { ok: "connecté", err: "erreur", wait: "…", off: "non connecté", idle: "" };
   $("#sources").innerHTML = Object.keys(labels).map((k) => {
     const st = status[k];
@@ -141,6 +143,12 @@ function badges() {
     const n = list.filter((a) => a.status !== "rendu" && a.due && a.due < now + 7 * 86400).length;
     $("#nav-devoirs").textContent = n || "";
   }).catch(() => {});
+  if (window.__me.sources.notes) {
+    notesData().then((d) => {
+      const n = d.releve.publie ? newEvals(d.releve).size : 0;
+      if (location.hash !== "#/notes") $("#nav-notes").textContent = n || "";
+    }).catch(() => {});
+  }
   mailsData().then((m) => {
     const el = $("#nav-mails");
     el.textContent = m.unread || "";
@@ -326,16 +334,18 @@ function bindMailConnect(root, after) {
 async function viewHome() {
   const today = startOfDay(new Date());
   const me = window.__me;
-  main.innerHTML = `
+  main.innerHTML = `<div class="home-grid">
     <header class="head">
       <div><h1>Bonjour ${esc(me.prenom)}</h1><p id="next">${longDay(today)}</p></div>
       ${me.demo ? '<span class="demo-banner">Mode démo : données fictives</span>' : ""}
     </header>
     <section class="day" id="day"><div class="day-top"><h2>Ta journée</h2><span></span></div>${skel(2)}</section>
+    <aside class="panel notes-col" aria-label="Notes"><div class="notes-card" id="home-notes">${skel(5)}</div></aside>
     <div class="cols">
       <section><div class="h2"><h2>À rendre</h2><a href="#/devoirs">Tous les devoirs</a></div><div id="home-due">${skel(4)}</div></section>
       <section><div class="h2"><h2>Mails récents</h2><a href="#/mails">Boîte de réception</a></div><div id="home-mail">${skel(4)}</div></section>
-    </div>`;
+    </div></div>`;
+  renderNotesCard();
 
   planning(today, addDays(today, 7)).then((evs) => {
     const now = new Date();
@@ -591,6 +601,212 @@ async function viewAssignments() {
     : '<div class="empty">Aucun devoir Moodle trouvé dans tes cours.</div>';
 }
 
+/* ── Notes ─────────────────────────────────────────────── */
+const fmt = (v, d = 2) => (v == null ? "–" : v.toFixed(d).replace(".", ","));
+const fmtInt = (v) => (Number.isInteger(v) ? String(v) : fmt(v, 1));
+// ≥ 10 normal, de 8 à 10 orange, < 8 rouge (une UE sous 8 ne se compense pas en BUT).
+const gradeCls = (v) => (v == null ? "g-none" : v >= 10 ? "g-ok" : v >= 8 ? "g-warn" : "g-bad");
+const ordinal = (n) => (n === 1 ? "1er" : `${n}e`);
+const notesData = (sem) => api(`/api/notes${sem ? `?semestre=${sem}` : ""}`, { source: "notes", maxAge: 600000 });
+
+// Pastille de rang, réutilisée partout : podium or / argent / bronze (avec icône), puis bleu.
+function rankPill(rang, total) {
+  if (rang == null || !total) return "";
+  const tier = rang <= 3 ? `r${rang}` : "rn";
+  const icon = rang === 1 ? ICON.trophy : rang <= 3 ? ICON.medal : "";
+  return `<span class="rank ${tier}" title="Rang ${rang} sur ${total}" aria-label="Rang : ${ordinal(rang)} sur ${total}">${icon}${ordinal(rang)} / ${total}</span>`;
+}
+
+// Évaluations déjà vues (localStorage, facultatif). Au tout premier affichage, seules les notes
+// récentes comptent comme nouvelles : on ne signale pas tout l'historique.
+const SEEN_KEY = "notes.seen";
+function loadSeen() {
+  try { const v = JSON.parse(localStorage.getItem(SEEN_KEY)); return Array.isArray(v) ? new Set(v) : null; } catch { return null; }
+}
+function saveSeen(set) {
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify([...set])); } catch { /* stockage indisponible */ }
+}
+function gradedEvals(releve) {
+  return releve.modules.flatMap((m) => m.evaluations.filter((e) => e.note != null));
+}
+function newEvals(releve) {
+  const graded = gradedEvals(releve);
+  let seen = loadSeen();
+  if (!seen) {
+    seen = new Set(graded.filter((e) => !e.date || Date.now() - new Date(`${e.date}T12:00:00`) > 4 * DAY).map((e) => e.id));
+    saveSeen(seen);
+  }
+  return new Set(graded.filter((e) => !seen.has(e.id)).map((e) => e.id));
+}
+function markSeen(releve) {
+  const seen = loadSeen() || new Set();
+  gradedEvals(releve).forEach((e) => seen.add(e.id));
+  saveSeen(seen);
+  $("#nav-notes").textContent = "";
+}
+
+// Champ de mot de passe quand il n'y en a plus en mémoire (session « Se souvenir de moi »).
+function notesLoginForm() {
+  return `<form class="pw-form" id="notes-pw" autocomplete="off">
+    <input type="password" name="password" placeholder="Mot de passe pour afficher tes notes" aria-label="Mot de passe pour afficher tes notes" autocomplete="current-password" required>
+    <p class="pw-err" role="alert"></p>
+    <button class="btn primary" type="submit">Afficher mes notes</button></form>`;
+}
+function bindNotesLogin(root, after) {
+  const f = $("#notes-pw", root);
+  if (!f) return;
+  f.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const btn = $("button", f), err = $(".pw-err", f);
+    btn.disabled = true;
+    err.textContent = "";
+    try {
+      const r = await fetch("/api/notes/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: f.password.value }) });
+      const data = await r.json();
+      if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
+      f.password.value = "";
+      window.__me = await fetch("/api/me").then((x) => x.json());
+      delete store["/api/notes"];
+      after();
+    } catch (e) {
+      err.textContent = e.message;
+      btn.disabled = false;
+    }
+  });
+}
+
+const semNom = (d) => (d.semestres.find((s) => s.actuel) || {}).nom || "";
+
+function notesCard(d) {
+  const r = d.releve;
+  const top = `<div class="nc-top"><h2>Notes</h2><span>${esc(semNom(d))}</span></div>`;
+  if (!r.publie) return `${top}<p class="nc-msg">${esc(r.message)}</p>`;
+  const s = r.semestre;
+  const promo = r.options.promo;
+  const ues = r.ues.map((u) => {
+    const pct = u.moyenne == null ? 0 : Math.max(0, Math.min(100, u.moyenne * 5));
+    const marker = promo && u.moy != null ? `<span class="mp" style="left:${Math.min(100, u.moy * 5)}%" title="Moyenne de la promo : ${fmt(u.moy)}"></span>` : "";
+    return `<div class="ue-row" style="--uc:${esc(u.couleur)}">
+      <div class="ue-top"><span class="ue-code">${esc(u.code)}</span><span class="ue-name" title="${esc(u.titre)}">${esc(u.titre)}</span>
+        <b class="ue-avg ${gradeCls(u.moyenne)}">${fmt(u.moyenne)}</b>${rankPill(u.rang, u.total)}</div>
+      <div class="bar" role="img" aria-label="${esc(u.code)} : ${fmt(u.moyenne)} sur 20"><i style="width:${pct}%"></i><span class="m10"></span>${marker}</div></div>`;
+  }).join("");
+  return `${top}
+    <div class="nc-avg"><div><span class="lbl">Moyenne générale</span><b class="big ${gradeCls(s.moyenne)}">${fmt(s.moyenne)}<small>/20</small></b></div>${rankPill(s.rang, s.total)}</div>
+    ${s.bonus ? `<p class="nc-bonus">Bonus : ${s.bonus > 0 ? "+" : ""}${fmt(s.bonus)}</p>` : ""}
+    <div class="ue-list">${ues || '<p class="nc-msg">Aucune UE pour le moment.</p>'}</div>
+    <div class="nc-foot"><a href="#/notes">Relevé complet</a><span class="nc-legend">${promo ? "Repères : 10 et moyenne de la promo" : "Repère à 10"}</span></div>`;
+}
+
+async function renderNotesCard() {
+  const box = $("#home-notes");
+  if (!box) return;
+  try {
+    box.innerHTML = notesCard(await notesData());
+  } catch (e) {
+    if (e.code === "notes_login_required") {
+      box.innerHTML = `<div class="nc-top"><h2>Notes</h2></div>${notesLoginForm()}`;
+      bindNotesLogin(box, () => { renderNotesCard(); badges(); });
+    } else box.innerHTML = errorBox(e, "Notes");
+  }
+}
+
+/* ── Vue : Notes ───────────────────────────────────────── */
+const notesUi = { sem: null, view: "ue", init: false };
+
+function absText(a) {
+  if (!a) return "";
+  const u = /heure/i.test(a.unite) ? "h" : String(a.unite).toLowerCase();
+  if (!a.total) return "Aucune absence";
+  const inj = a.injustifiees ? `, dont ${fmtInt(a.injustifiees)} non justifiée${a.injustifiees > 1 ? "s" : ""}` : "";
+  return `${fmtInt(a.total)} ${u}${inj}`;
+}
+const promoText = (o) => (o.min == null && o.moy == null && o.max == null ? ""
+  : `<span>Promo : min ${fmt(o.min)}</span><span>moy ${fmt(o.moy)}</span><span>max ${fmt(o.max)}</span>`);
+const evDate = (iso) => (iso ? fDate.format(new Date(`${iso}T12:00:00`)) : "");
+
+function notesSummary(r) {
+  const s = r.semestre;
+  const tiles = [`<div class="panel n-tile"><span class="lbl">Moyenne générale</span><div class="val"><span class="${gradeCls(s.moyenne)}">${fmt(s.moyenne)}<small> /20</small></span>${rankPill(s.rang, s.total)}</div>
+      ${r.options.promo ? `<div class="sub">${promoText(s)}</div>` : ""}</div>`];
+  if (s.ects_total != null) tiles.push(`<div class="panel n-tile"><span class="lbl">ECTS acquis</span><div class="val">${fmtInt(s.ects_acquis ?? 0)}<small> / ${fmtInt(s.ects_total)}</small></div></div>`);
+  if (s.bonus) tiles.push(`<div class="panel n-tile"><span class="lbl">Bonus</span><div class="val">${s.bonus > 0 ? "+" : ""}${fmt(s.bonus)}</div></div>`);
+  if (s.absences) tiles.push(`<div class="panel n-tile"><span class="lbl">Absences</span><div class="val" style="font-size:20px">${esc(absText(s.absences))}</div></div>`);
+  return `<div class="n-sum">${tiles.join("")}</div>`;
+}
+
+function notesByUe(r, fresh) {
+  const newMods = new Set(r.modules.filter((m) => m.evaluations.some((e) => fresh.has(e.id))).map((m) => m.code));
+  return r.ues.map((u) => `<section class="panel n-sec ue" style="--uc:${esc(u.couleur)}">
+    <div class="n-sec-head"><div class="ttl"><span class="code">${esc(u.code)}</span><h2>${esc(u.titre)}</h2></div>
+      <span class="avg ${gradeCls(u.moyenne)}">${fmt(u.moyenne)}</span>${rankPill(u.rang, u.total)}
+      <div class="meta">${u.bonus ? `<span class="n-tag plus">Bonus +${fmt(u.bonus)}</span>` : ""}${u.malus ? `<span class="n-tag minus">Malus −${fmt(Math.abs(u.malus))}</span>` : ""}
+        ${u.ects_total != null ? `<span>${fmtInt(u.ects_total)} ECTS</span>` : ""}${r.options.promo ? promoText(u) : ""}</div></div>
+    ${u.modules.map((m) => `<div class="n-row"><span class="code">${esc(m.code)}</span>
+      <span class="name">${esc(m.titre)}${newMods.has(m.code) ? '<span class="new-tag">Nouveau</span>' : ""}</span>
+      <span class="coef">coef ${fmtInt(m.coef)}</span><span class="grade ${gradeCls(m.moyenne)}">${fmt(m.moyenne)}</span></div>`).join("")
+      || '<div class="n-empty">Aucune ressource ni SAÉ.</div>'}</section>`).join("");
+}
+
+function notesByModule(r, fresh) {
+  const ueColor = Object.fromEntries(r.ues.map((u) => [u.code, u.couleur]));
+  return r.modules.map((m) => `<section class="panel n-sec">
+    <div class="n-sec-head"><div class="ttl"><span class="code">${esc(m.code)} · ${m.type === "sae" ? "SAÉ" : "Ressource"}</span><h2>${esc(m.titre)}</h2></div>
+      <span class="avg ${gradeCls(m.moyenne)}">${fmt(m.moyenne)}</span>${rankPill(m.rang, m.total)}
+      ${r.options.promo && promoText(m) ? `<div class="meta">${promoText(m)}</div>` : ""}</div>
+    ${m.evaluations.map((e) => {
+      const poids = Object.entries(e.poids).filter(([, v]) => v).map(([k, v]) => `<span style="color:color-mix(in srgb, ${esc(ueColor[k] || "#888")} 70%, var(--ink))"><b>${esc(k)}</b> ×${fmtInt(v)}</span>`).join("");
+      const stats = r.options.promo && (e.min != null || e.moy != null || e.max != null) ? promoText(e) : "";
+      return `<div class="ev"><div class="t">${esc(e.titre)}${fresh.has(e.id) ? '<span class="new-tag">Nouveau</span>' : ""}
+          <span class="d">${esc(evDate(e.date))}${e.coef != null ? ` · coef ${fmt(e.coef)}` : ""}</span></div>
+        ${e.note == null ? '<span class="g none">pas encore de note</span>' : `<span class="g ${gradeCls(e.note)}">${fmt(e.note)}</span>`}
+        ${poids || stats ? `<div class="sub">${poids}${stats}</div>` : ""}</div>`;
+    }).join("") || '<div class="n-empty">Aucune évaluation pour le moment.</div>'}</section>`).join("");
+}
+
+async function viewNotes() {
+  if (!notesUi.init) {   // lien direct possible : #/notes?v=mod&sem=120
+    notesUi.init = true;
+    const q = new URLSearchParams(location.hash.split("?")[1] || "");
+    if (q.get("v") === "mod") notesUi.view = "mod";
+    if (q.get("sem")) notesUi.sem = +q.get("sem");
+  }
+  main.innerHTML = `<header class="head"><div><h1>Notes</h1><p id="n-sub">Relevé de la passerelle de l'IUT</p></div><div class="toolbar" id="n-tools"></div></header><div id="n-body">${skel(6)}</div>`;
+  const body = $("#n-body");
+  let d;
+  try {
+    d = await notesData();
+    if (notesUi.sem && !d.semestres.find((s) => s.id === notesUi.sem && !s.actuel)) notesUi.sem = null;
+    if (notesUi.sem) d = await notesData(notesUi.sem);
+  } catch (e) {
+    if (e.code === "notes_login_required") {
+      body.innerHTML = `<div class="panel notes-card" style="max-width:420px"><div class="nc-top"><h2>Notes</h2></div>${notesLoginForm()}</div>`;
+      bindNotesLogin(body, viewNotes);
+    } else body.innerHTML = errorBox(e, "Notes");
+    return;
+  }
+  const cur = notesUi.sem || (d.semestres.find((s) => s.actuel) || {}).id;
+  const r = d.releve;
+  $("#n-tools").innerHTML = `<select class="select" id="n-sem" aria-label="Semestre">${d.semestres.slice().reverse().map((s) =>
+    `<option value="${s.id}"${s.id === cur ? " selected" : ""}>${esc(s.nom)}${s.actuel ? " (en cours)" : ""}</option>`).join("")}</select>
+    <div class="seg" role="group" aria-label="Affichage"><button type="button" data-v="ue" aria-pressed="${notesUi.view === "ue"}">Par UE</button><button type="button" data-v="mod" aria-pressed="${notesUi.view === "mod"}">Par matière</button></div>`;
+  $("#n-sem").addEventListener("change", (ev) => {
+    const sel = d.semestres.find((s) => s.id === +ev.target.value);
+    notesUi.sem = sel && !sel.actuel ? sel.id : null;
+    viewNotes();
+  });
+  if (!r.publie) { body.innerHTML = `<div class="empty">${esc(r.message)}</div>`; return; }
+  const current = (d.semestres.find((x) => x.id === cur) || {}).actuel;   // seul le semestre en cours a des « nouvelles » notes
+  const fresh = current ? newEvals(r) : new Set();
+  const draw = () => {
+    document.querySelectorAll("#n-tools .seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === notesUi.view)));
+    body.innerHTML = notesSummary(r) + (notesUi.view === "ue" ? notesByUe(r, fresh) : notesByModule(r, fresh));
+  };
+  document.querySelectorAll("#n-tools .seg button").forEach((b) => b.addEventListener("click", () => { notesUi.view = b.dataset.v; draw(); }));
+  draw();
+  if (current) markSeen(r);
+}
+
 /* ── Vue : Mails ───────────────────────────────────────── */
 async function viewMails() {
   main.innerHTML = `<header class="head"><div><h1>Mails</h1><p>${esc(window.__me.mail)}</p></div><div class="toolbar" id="mail-tools"></div></header><div id="mails">${skel(8)}</div>`;
@@ -617,7 +833,7 @@ async function viewMails() {
 }
 
 /* ── Routeur ───────────────────────────────────────────── */
-const ROUTES = { "": ["home", viewHome], planning: ["planning", viewPlanning], ressources: ["ressources", viewResources], devoirs: ["devoirs", viewAssignments], mails: ["mails", viewMails] };
+const ROUTES = { "": ["home", viewHome], planning: ["planning", viewPlanning], ressources: ["ressources", viewResources], devoirs: ["devoirs", viewAssignments], notes: ["notes", viewNotes], mails: ["mails", viewMails] };
 
 function route() {
   if (document.body.classList.contains("locked")) return;
@@ -660,7 +876,7 @@ function showLogin(message) {
     <label>Mot de passe<input name="password" type="password" autocomplete="current-password"></label>
     <label class="remember"><input name="remember" type="checkbox"> Se souvenir de moi</label>
     <button class="btn primary" type="submit">Se connecter</button>
-    <p class="note">Ton mot de passe n'est jamais enregistré. « Se souvenir de moi » garde seulement une session Moodle et Outlook sur cet ordinateur, jusqu'à ce que tu cliques sur Se déconnecter.</p>
+    <p class="note">Ton mot de passe n'est jamais enregistré. « Se souvenir de moi » garde seulement une session Moodle et Outlook sur cet ordinateur, jusqu'à ce que tu cliques sur Se déconnecter. Après un redémarrage, les notes te redemanderont ton mot de passe.</p>
   </form>`;
   $("#login").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -692,6 +908,7 @@ function start() {
   Object.keys(store).forEach((k) => delete store[k]);
   setStatus("moodle", "idle");
   if (!window.__me.sources.mail) setStatus("mail", "off");
+  if (!window.__me.sources.notes) setStatus("notes", "off");
   route();
   badges();
 }

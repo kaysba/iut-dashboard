@@ -5,11 +5,11 @@ import random
 import re
 import sys
 import time
-import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
 from .common import (Session, SourceError, delete_secret, http_post_json,
-                     load_secret, parse_html, save_secret)
+                     load_secret, save_secret)
+from .sso import cas_login
 
 TOKEN_FILE = "moodle_token.json"
 STATUS_FILE = "assign_status.json"
@@ -17,7 +17,8 @@ EVENTS_PAGE = 50
 
 
 class Moodle:
-    def __init__(self, cfg):
+    def __init__(self, cfg, session=None):
+        self.session = session or Session()
         self.base = cfg.MOODLE_URL.rstrip("/")
         self.login = cfg.UNICA_LOGIN
         self.password = cfg.UNICA_PASSWORD
@@ -50,58 +51,19 @@ class Moodle:
         return self._token
 
     def _token_via_sso(self):
-        s = Session()
-        status, url, headers, body = s.request(self.base + "/login/index.php")
-        password_sent = 0
+        s = self.session
 
-        for _ in range(15):
-            on_moodle = url.startswith(self.base)
-            if on_moodle and "/login/" not in url:
-                break  # connecté
-            page = parse_html(body)
+        def on_site(url):
+            return url.startswith(self.base) and "/login/" not in url
 
-            # 1. Sur la page de login Moodle : suivre le bouton CAS / SSO
-            if on_moodle:
-                sso = next((l for l in page.links if re.search(
+        def sso_link(url, page):
+            if url.startswith(self.base):
+                return next((l for l in page.links if re.search(
                     r"authCAS|auth/cas|auth/shibboleth|auth/oauth2/login|auth/saml2|auth/oidc", l)), None)
-                if sso:
-                    status, url, headers, body = s.request(urllib.parse.urljoin(url, html.unescape(sso)))
-                    continue
 
-            # 2. Formulaire avec mot de passe : on le remplit
-            form = next((f for f in page.forms if any(i["type"] == "password" for i in f["inputs"])), None)
-            if form:
-                if password_sent >= 1:
-                    raise SourceError("Connexion UniCA refusée : vérifie ton identifiant et ton mot de passe. "
-                                      "Si tu as la double authentification, utilise MOODLE_TOKEN dans config.py (voir README).")
-                fields = {}
-                user_field = None
-                for i in form["inputs"]:
-                    if not i["name"]:
-                        continue
-                    if i["type"] == "password":
-                        fields[i["name"]] = self.password
-                    elif i["type"] in ("text", "email") and user_field is None:
-                        user_field = i["name"]
-                        fields[i["name"]] = self.login
-                    elif i["type"] in ("hidden",):
-                        fields[i["name"]] = i["value"]
-                    elif i["type"] == "submit" and i["name"] and i["name"] not in fields:
-                        fields[i["name"]] = i["value"]
-                    elif i["type"] == "checkbox":
-                        pass
-                password_sent += 1
-                status, url, headers, body = self._submit(s, url, form, fields)
-                continue
-
-            # 3. Formulaire auto-posté (SAML, relais SSO)
-            auto = next((f for f in page.forms if f["inputs"] and all(
-                i["type"] in ("hidden", "submit") for i in f["inputs"])), None)
-            if auto:
-                fields = {i["name"]: i["value"] for i in auto["inputs"] if i["name"] and i["type"] == "hidden"}
-                status, url, headers, body = self._submit(s, url, auto, fields)
-                continue
-            break
+        cas_login(s, self.base + "/login/index.php", self.login, self.password, on_site, follow_link=sso_link,
+                  refused="Connexion UniCA refusée : vérifie ton identifiant et ton mot de passe. "
+                          "Si tu as la double authentification, utilise MOODLE_TOKEN dans config.py (voir README).")
 
         # Vérification + jeton mobile
         passport = str(random.randint(10**6, 10**9))
@@ -121,14 +83,6 @@ class Moodle:
         if len(parts) < 2:
             raise SourceError("Jeton Moodle illisible.")
         return parts[1]
-
-    @staticmethod
-    def _submit(s, url, form, fields):
-        action = urllib.parse.urljoin(url, html.unescape(form["action"])) if form["action"] else url
-        if form["method"] == "post":
-            return s.request(action, data=fields)
-        sep = "&" if "?" in action else "?"
-        return s.request(action + sep + urllib.parse.urlencode(fields))
 
     # ── Appels API ──────────────────────────────────────────
     def call(self, fn, _retry=True, **params):
