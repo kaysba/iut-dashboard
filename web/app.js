@@ -320,7 +320,7 @@ async function itemBlob(it) {
   return r.blob();
 }
 
-function sendXhr(url, body, onProgress) {
+function sendXhr(url, body, onProgress, tooBig) {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
     x.open("POST", url);
@@ -330,9 +330,9 @@ function sendXhr(url, body, onProgress) {
       let data;
       try { data = JSON.parse(x.responseText); } catch { data = { error: `Réponse illisible (HTTP ${x.status})` }; }
       if (x.status >= 200 && x.status < 300 && !data.error) resolve(data);
-      else reject(Object.assign(new Error(data.error || `HTTP ${x.status}`), { code: data.code }));
+      else reject(Object.assign(new Error(x.status === 413 && tooBig && tooBig() ? "Fichier trop gros pour ce devoir" : (data.error || `HTTP ${x.status}`)), { code: data.code }));
     };
-    x.onerror = () => reject(new Error("Envoi interrompu : vérifie que le dashboard tourne toujours."));
+    x.onerror = () => reject(new Error(tooBig && tooBig() ? "Fichier trop gros pour ce devoir" : "Envoi interrompu : vérifie que le dashboard tourne toujours."));
     x.send(body);
   });
 }
@@ -574,7 +574,7 @@ function openDepot(id) {
       const bar = $(".dp-bar i", box), txt = $("#dp-prog-txt", box);
       if (bar) bar.style.width = `${st.pct}%`;
       if (txt) txt.textContent = st.pct >= 100 ? "Enregistrement dans Moodle…" : `Envoi… ${st.pct} %`;
-    });
+    }, () => st.depot.taille_max && st.staged.reduce((n, s) => n + s.file.size, 0) > st.depot.taille_max);
   };
 
   box.addEventListener("click", async (e) => {

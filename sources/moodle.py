@@ -96,10 +96,14 @@ class Moodle:
         resp = http_post_json(self.base + "/webservice/rest/server.php", data)
         if isinstance(resp, dict) and resp.get("exception"):
             code = resp.get("errorcode", "")
-            if code in ("invalidtoken", "accessexception") and _retry and not self.manual_token:
+            if code == "invalidtoken" and not self.manual_token:
+                # Le jeton est vraiment mort : on le jette. Réessayer n'a de sens que si un nouveau est possible.
                 self._token = None
                 delete_secret(TOKEN_FILE)
-                return self.call(fn, _retry=False, **params)
+                if not (self.login and self.password):
+                    raise SourceError("SESSION_EXPIRED")
+                if _retry:
+                    return self.call(fn, _retry=False, **params)
             err = SourceError("Jeton Moodle invalide ou expiré." if code == "invalidtoken"
                               else f"Moodle ({fn}) : {resp.get('message', code)}")
             err.code = code

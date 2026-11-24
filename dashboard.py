@@ -288,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(e, SourceError):
             traceback.print_exc()
             msg = f"Erreur inattendue : {e}"
-        self._json({"error": msg}, 502)
+        self._json({"error": msg}, getattr(e, "status", 502))
 
     def do_GET(self):
         if not self._host_ok():
@@ -356,8 +356,20 @@ class Handler(BaseHTTPRequestHandler):
         """Lit le corps en flux, en mémoire (jamais sur le disque), sans dépasser la limite annoncée."""
         length = int(self.headers.get("Content-Length") or 0)
         if length > limit:
-            self.close_connection = True
-            raise SourceError(f"Envoi trop gros ({length // 1048576} Mo) : la limite est de {max(1, limit // 1048576)} Mo.")
+            # Vide le corps reçu (sans le garder) pour que le navigateur lise la réponse au lieu d'une coupure.
+            cap = getattr(config, "UPLOAD_MAX", 100 * 1024 * 1024) + 1048576
+            if length <= cap:
+                left = length
+                while left > 0:
+                    chunk = self.rfile.read(min(65536, left))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+            else:
+                self.close_connection = True
+            err = SourceError(f"Envoi trop gros ({length // 1048576} Mo) : la limite est de {max(1, limit // 1048576)} Mo.")
+            err.status = 413
+            raise err
         chunks, left = [], length
         while left > 0:
             chunk = self.rfile.read(min(65536, left))
@@ -449,7 +461,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("", "/"):
             path = "/index.html"
         full = os.path.normpath(os.path.join(WEB_DIR, path.lstrip("/")))
-        if not full.startswith(WEB_DIR) or not os.path.isfile(full):
+        if os.path.commonpath([full, WEB_DIR]) != WEB_DIR or not os.path.isfile(full):
             return self.send_error(404)
         ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype.endswith("javascript"):

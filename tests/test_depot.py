@@ -389,8 +389,28 @@ class RouteTest(unittest.TestCase):
         c.putheader("Content-Length", str(500 * 1048576))     # annoncé, jamais envoyé
         c.endheaders()
         r = c.getresponse()
+        self.assertEqual(r.status, 413)
         self.assertIn("trop gros", json.loads(r.read())["error"])
         c.close()
+
+    def test_envoi_trop_gros_corps_vide_puis_413(self):
+        # Au-dessus de la limite du devoir mais sous le plafond : le corps est lu puis la réponse arrive.
+        body, ctype = encode_multipart({}, [("fichiers", "a.pdf", b"x" * (12 * 1048576))])
+        st, d = self.req("POST", "/api/assignments/2/draft", body, ctype)
+        self.assertEqual(st, 413)
+        self.assertIn("Envoi trop gros", d["error"])
+
+    def test_fichiers_statiques_hors_du_dossier_web(self):
+        for path in ("/../web_autre/x", "/%2e%2e/config.py", "/../config-exemple.py", "/..%2fweb_autre/x"):
+            c = http.client.HTTPConnection("127.0.0.1", self.srv.server_port, timeout=10)
+            c.request("GET", path)
+            r = c.getresponse()
+            r.read()
+            c.close()
+            self.assertEqual(r.status, 404, path)
+        d = self.d
+        voisin = d.WEB_DIR + "_autre"
+        self.assertNotEqual(os.path.commonpath([os.path.join(voisin, "x"), d.WEB_DIR]), d.WEB_DIR)
 
     def test_origin_et_host_verifies(self):
         body, ctype = encode_multipart({}, [("f", "a.pdf", b"x")])
