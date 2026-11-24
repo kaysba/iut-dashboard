@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .common import (Session, SourceError, delete_secret, http_get, http_post_json,
                      http_post_multipart, load_secret, save_secret)
 from .sso import cas_login
+from .defaults import opt
 
 TOKEN_FILE = "moodle_token.json"
 STATUS_FILE = "assign_status.json"
@@ -24,11 +25,11 @@ DENIED_CODES = {"accessexception", "webservice_access_exception", "nofileupload"
 class Moodle:
     def __init__(self, cfg, session=None):
         self.session = session or Session()
-        self.base = cfg.MOODLE_URL.rstrip("/")
-        self.login = cfg.UNICA_LOGIN
-        self.password = cfg.UNICA_PASSWORD
-        self.manual_token = cfg.MOODLE_TOKEN.strip()
-        self.hidden = [h.lower() for h in getattr(cfg, "COURS_MASQUES", [])]
+        self.base = opt(cfg, "MOODLE_URL").rstrip("/")
+        self.login = opt(cfg, "UNICA_LOGIN")
+        self.password = opt(cfg, "UNICA_PASSWORD")
+        self.manual_token = opt(cfg, "MOODLE_TOKEN").strip()
+        self.hidden = [h.lower() for h in opt(cfg, "COURS_MASQUES")]
         self._token = None
         self._site = None
         self._calendar_ok = None

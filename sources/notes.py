@@ -7,6 +7,7 @@ import urllib.parse
 
 from .common import Session, SourceError
 from .sso import cas_login
+from .defaults import opt
 
 LOGIN_REQUIRED = "NOTES_LOGIN_REQUIRED"
 NOT_PUBLISHED = "Le relevé de notes de ce semestre n'est pas publié."
@@ -15,7 +16,7 @@ NOT_PUBLISHED = "Le relevé de notes de ce semestre n'est pas publié."
 class Notes:
     def __init__(self, cfg, session=None):
         self.cfg = cfg
-        self.base = getattr(cfg, "NOTES_URL", "https://iut-notes.unice.fr").rstrip("/")
+        self.base = opt(cfg, "NOTES_URL").rstrip("/")
         self.session = session or Session()
         self._password = ""
         self._semestres = None      # [{id, nom, actuel}], en mémoire seulement
@@ -33,7 +34,7 @@ class Notes:
         return urllib.parse.urlsplit(self.base).hostname or ""
 
     def login(self, login=None, password=None):
-        login = login or self.cfg.UNICA_LOGIN
+        login = login or opt(self.cfg, "UNICA_LOGIN")
         if password:
             self._password = password
         if not (login and self._password):
@@ -106,7 +107,7 @@ class Notes:
         """Relevé officiel au format PDF (services/bulletin_PDF.php de la passerelle), en mémoire."""
         if not (self._password or self._has_cookie()):
             raise SourceError(LOGIN_REQUIRED)
-        query = urllib.parse.urlencode({"sem_id": semestre_id, "type": getattr(self.cfg, "NOTES_PDF_TYPE", "short")})
+        query = urllib.parse.urlencode({"sem_id": semestre_id, "type": opt(self.cfg, "NOTES_PDF_TYPE")})
         for attempt in (0, 1):
             try:
                 _, _, _, body = self.session.request(f"{self.base}/services/bulletin_PDF.php?{query}")

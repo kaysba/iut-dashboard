@@ -23,9 +23,26 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 if sys.version_info < (3, 8):
     sys.exit("Python 3.8 ou plus récent est nécessaire.")
 
-import config
+def _charger_config():
+    """config.py, ou un message clair s'il n'existe pas (en démo, on continue avec les valeurs par défaut)."""
+    try:
+        import config as module
+        return module
+    except ModuleNotFoundError as e:
+        if e.name != "config":
+            raise
+    from types import SimpleNamespace
+    if "--demo" in sys.argv:
+        print("[config] Pas de config.py : valeurs par défaut utilisées (mode démo).", file=sys.stderr)
+        return SimpleNamespace()
+    from sources.configcheck import MESSAGE_SANS_CONFIG
+    sys.exit(MESSAGE_SANS_CONFIG)
+
+
+config = _charger_config()
 from sources import demo
 from sources.ade import ADE
+from sources.defaults import DEFAULTS, opt
 from sources.common import (UA, Session, SourceError, TTLCache, delete_secret, load_secret, parse_multipart,
                             save_secret)
 from sources.moodle import DENIED, Moodle, verifier_envoi, verifier_remise
@@ -81,7 +98,7 @@ def api_login(payload):
     remember = bool(payload.get("remember"))
     if not login:
         raise SourceError("Entre ton identifiant UniCA.")
-    if not pw and not (config.MOODLE_TOKEN or load_secret("moodle_token.json")):
+    if not pw and not (opt(config, "MOODLE_TOKEN") or load_secret("moodle_token.json")):
         raise SourceError("Entre ton mot de passe.")
     config.UNICA_LOGIN = login
     if mail:
@@ -122,7 +139,7 @@ def api_login(payload):
     moodle.password = ""          # plus nécessaire en mémoire une fois le jeton obtenu
     config.UNICA_PASSWORD = ""
     if remember:
-        save_secret(REMEMBER_FILE, {"login": login, "mail": mail or config.MAIL_ADRESSE})
+        save_secret(REMEMBER_FILE, {"login": login, "mail": mail or opt(config, "MAIL_ADRESSE")})
     else:
         delete_secret(REMEMBER_FILE)
         delete_secret("moodle_token.json")   # le jeton reste seulement en mémoire
@@ -145,13 +162,12 @@ def api_logout():
 
 
 HEX_COLOR = re.compile(r"#[0-9A-Fa-f]{6}")
-DEFAULT_SECOURS = ["#A58A73", "#7A9CB8", "#969956", "#AE67E4", "#529B85", "#CD8572"]  # si config.py n'en définit pas
 
 
 def _subject_config():
     """MATIERES et COULEURS_SECOURS de config.py, validés (un ancien config.py sans ces lignes reste valide)."""
     matieres = []
-    for i, m in enumerate(getattr(config, "MATIERES", []) or []):
+    for i, m in enumerate(opt(config, "MATIERES") or []):
         try:
             motif, nom, couleur = m["motif"], m.get("nom", ""), m["couleur"]
             re.compile(motif)
@@ -162,23 +178,23 @@ def _subject_config():
             continue
         matieres.append({"motif": motif, "nom": str(nom), "couleur": couleur})
     secours = []
-    for c in getattr(config, "COULEURS_SECOURS", []) or []:
+    for c in opt(config, "COULEURS_SECOURS") or []:
         if isinstance(c, str) and HEX_COLOR.fullmatch(c):
             secours.append(c)
         else:
             print(f"[config] COULEURS_SECOURS : {c!r} ignorée (format #RRGGBB attendu)", file=sys.stderr)
-    return matieres, secours or DEFAULT_SECOURS
+    return matieres, secours or list(DEFAULTS["COULEURS_SECOURS"])
 
 
 def api_me(_q):
-    name = config.PRENOM
+    name = opt(config, "PRENOM")
     matieres, secours = _subject_config()
     return {
         "matieres": matieres, "couleursSecours": secours,
-        "prenom": name, "demo": DEMO, "loggedIn": logged_in(), "login": config.UNICA_LOGIN, "moodleUrl": config.MOODLE_URL,
+        "prenom": name, "demo": DEMO, "loggedIn": logged_in(), "login": opt(config, "UNICA_LOGIN"), "moodleUrl": opt(config, "MOODLE_URL"),
         "sources": {
-            "moodle": DEMO or bool(config.MOODLE_TOKEN or (config.UNICA_LOGIN and config.UNICA_PASSWORD)),
-            "ade": DEMO or bool(config.ADE_ICAL_URL),
+            "moodle": DEMO or bool(opt(config, "MOODLE_TOKEN") or (opt(config, "UNICA_LOGIN") and opt(config, "UNICA_PASSWORD"))),
+            "ade": DEMO or bool(opt(config, "ADE_ICAL_URL")),
             "mail": DEMO or outlook.connected(),
             "notes": DEMO or notes.has_password(),
         },
@@ -202,25 +218,25 @@ def api_planning(q, force):
     if DEMO:
         return {"events": demo.events(start, end)}
     key = f"ade:{start}:{end}"
-    return {"events": cache.get(key, config.CACHE_PLANNING, lambda: ade.events(start, end), force)}
+    return {"events": cache.get(key, opt(config, "CACHE_PLANNING"), lambda: ade.events(start, end), force)}
 
 
 def api_resources(_q, force):
     if DEMO:
         return {"courses": demo.resources()}
-    return {"courses": cache.get("res", config.CACHE_MOODLE, moodle.resources, force)}
+    return {"courses": cache.get("res", opt(config, "CACHE_MOODLE"), moodle.resources, force)}
 
 
 def api_assignments(_q, force):
     if DEMO:
         return {"assignments": demo.assignments()}
-    return {"assignments": cache.get("assign", config.CACHE_MOODLE, moodle.assignments, force)}
+    return {"assignments": cache.get("assign", opt(config, "CACHE_MOODLE"), moodle.assignments, force)}
 
 
 def api_mails(_q, force):
     if DEMO:
         return demo.mails()
-    return cache.get("mail", config.CACHE_MAILS, outlook.messages, force)
+    return cache.get("mail", opt(config, "CACHE_MAILS"), outlook.messages, force)
 
 
 def api_notes(q, force):
@@ -230,7 +246,7 @@ def api_notes(q, force):
     sid = int(sid) if sid else None
     if DEMO:
         return demo.notes(sid)
-    ttl = getattr(config, "CACHE_NOTES", 15 * 60)
+    ttl = opt(config, "CACHE_NOTES")
     return cache.get(f"notes:{sid}", ttl, lambda: notes.donnees(sid), force)
 
 
@@ -239,7 +255,7 @@ def api_notes_login(payload):
     pw = payload.get("password") or ""
     if not pw:
         raise SourceError("Entre ton mot de passe.")
-    notes.login(config.UNICA_LOGIN, pw)
+    notes.login(opt(config, "UNICA_LOGIN"), pw)
     cache.clear()
     return {"ok": True}
 
@@ -357,7 +373,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         if length > limit:
             # Vide le corps reçu (sans le garder) pour que le navigateur lise la réponse au lieu d'une coupure.
-            cap = getattr(config, "UPLOAD_MAX", 100 * 1024 * 1024) + 1048576
+            cap = opt(config, "UPLOAD_MAX") + 1048576
             if length <= cap:
                 left = length
                 while left > 0:
@@ -385,7 +401,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not logged_in():
                 return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
-            upload_max = getattr(config, "UPLOAD_MAX", 100 * 1024 * 1024)
+            upload_max = opt(config, "UPLOAD_MAX")
             if action == "draft":
                 state = demo.depot_state(aid) if DEMO else moodle.depot_state(aid)
                 depot = state["depot"]
@@ -477,10 +493,16 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    from sources import configcheck
+    if "--config-diff" in sys.argv:
+        configcheck.diff_complet(config, sys.stdout)
+        return
+    if hasattr(config, "__file__"):   # sans config.py (démo), le message de démarrage l'a déjà dit
+        configcheck.avertir(config, sys.stderr)
     mimetypes.add_type("text/javascript", ".js")
     mimetypes.add_type("text/css", ".css")
     mimetypes.add_type("font/woff2", ".woff2")
-    port = config.PORT
+    port = opt(config, "PORT")
     if not DEMO:
         import atexit
         init_session()
@@ -493,7 +515,7 @@ def main():
     url = f"http://localhost:{port}/"
     print(f"\n  Dashboard IUT {'(mode démo) ' if DEMO else ''}: {url}")
     print("  Ctrl+C pour arrêter.\n")
-    if config.OUVRIR_NAVIGATEUR and "--no-browser" not in sys.argv:
+    if opt(config, "OUVRIR_NAVIGATEUR") and "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         httpd.serve_forever()

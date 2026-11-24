@@ -4,6 +4,7 @@ import re
 import urllib.parse
 
 from .common import SourceError, http_get
+from .defaults import opt
 
 TYPE_RULES = [
     ("Examen", r"\b(examen|exam|ds|cc|partiel|contr[ôo]le|soutenance|évaluation)\b"),
@@ -16,7 +17,7 @@ TYPE_RULES = [
 
 class ADE:
     def __init__(self, cfg):
-        self.url = cfg.ADE_ICAL_URL.strip()
+        self.url = opt(cfg, "ADE_ICAL_URL").strip()
 
     def events(self, start: dt.date, end: dt.date):
         if not self.url:

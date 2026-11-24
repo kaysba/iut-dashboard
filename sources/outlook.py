@@ -16,6 +16,7 @@ import time
 import urllib.parse
 
 from .common import SourceError, delete_secret, http_post_json, load_secret, save_secret
+from .defaults import opt
 
 TOKEN_FILE = "outlook_token.json"
 SCOPE = "https://outlook.office.com/IMAP.AccessAsUser.All offline_access"
@@ -24,11 +25,11 @@ IMAP_HOST = "outlook.office365.com"
 
 class Outlook:
     def __init__(self, cfg):
-        self.address = cfg.MAIL_ADRESSE
-        self.count = cfg.MAIL_NOMBRE
-        self.client_id = cfg.MS_CLIENT_ID
-        self.tenant = cfg.MS_TENANT
-        self.redirect_uri = cfg.MS_REDIRECT_URI
+        self.address = opt(cfg, "MAIL_ADRESSE")
+        self.count = opt(cfg, "MAIL_NOMBRE")
+        self.client_id = opt(cfg, "MS_CLIENT_ID")
+        self.tenant = opt(cfg, "MS_TENANT")
+        self.redirect_uri = opt(cfg, "MS_REDIRECT_URI")
         self._pending = None  # (state, verifier, redirect_uri)
 
     @property

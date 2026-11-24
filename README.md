@@ -2,9 +2,9 @@
 
 Tableau de bord local pour l'IUT Nice Côte d'Azur : emploi du temps ADE, ressources Moodle triées (CM, TD, TP, examens), devoirs à rendre avec lien direct vers le dépôt, et derniers mails Outlook.
 
-Le serveur tourne **sur ta machine uniquement** (`127.0.0.1`). Rien n'est envoyé ailleurs que vers Moodle, ADE et Microsoft.
+Le serveur tourne **sur ta machine uniquement** (`127.0.0.1`). Rien n'est envoyé ailleurs que vers Moodle, ADE, la passerelle de notes (`iut-notes.unice.fr`) et Microsoft.
 
-Aucune bibliothèque à installer : seulement **Python 3.9 ou plus récent**.
+Aucune bibliothèque à installer : seulement **Python 3.8 ou plus récent**.
 
 ---
 
@@ -88,6 +88,16 @@ Les couleurs se règlent dans `config.py`, section `MATIERES` (copie-la depuis `
 - Un motif invalide ou une couleur qui n'est pas au format `#RRGGBB` est ignoré, avec un message dans la console : le dashboard démarre quand même.
 - Sans ces lignes dans `config.py` (ancien fichier), tout fonctionne avec les couleurs de secours par défaut. Avec `MATIERES = []`, toutes les matières prennent ces couleurs.
 
+### Mettre à jour son `config.py`
+
+Quand une nouvelle version ajoute des options, ton ancien `config.py` continue de marcher (les valeurs par défaut sont dans `sources/defaults.py`), et la console signale chaque option absente au démarrage. Pour les récupérer :
+
+```bash
+python3 dashboard.py --config-diff
+```
+
+La commande affiche les blocs manquants, commentaires compris, puis quitte : copie-les à la fin de ton `config.py`. Sans `config.py`, le dashboard explique comment le créer à partir de `config-exemple.py`.
+
 ## 3. Lancer
 
 | Système | Commande |
@@ -95,7 +105,7 @@ Les couleurs se règlent dans `config.py`, section `MATIERES` (copie-la depuis `
 | Windows | double-clic sur `lancer.bat` |
 | Linux | `./lancer.sh` (ou `python3 dashboard.py`) |
 
-Options : `--demo`, `--no-browser`, `--verbose`.
+Options : `--demo`, `--no-browser`, `--verbose`, `--config-diff`.
 
 ## Ce que fait chaque page
 
@@ -108,6 +118,7 @@ Options : `--demo`, `--no-browser`, `--verbose`.
 
 ## Sécurité
 
+- `config.py` contient ton lien ADE personnel (avec son jeton) et ton adresse mail : ne le partage pas, et fais attention aux captures d'écran qui le montrent.
 - `config.py` et `.cache/` (jetons) sont dans `.gitignore`. Vérifie avec `git status` avant chaque push.
 - Le serveur n'écoute que sur `127.0.0.1` et refuse les requêtes qui ne viennent pas de `localhost`.
 - Les tests utilisent `tests/fixtures/notes_reel_anonyme.json`, une vraie réponse anonymisée : elle est ignorée par git (`.gitignore`), ne la partage pas. Lancer les tests : `python3 -m unittest discover tests`.
