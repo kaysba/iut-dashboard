@@ -2,7 +2,10 @@
 import importlib.util
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,6 +56,43 @@ class DefautsTest(unittest.TestCase):
             self.assertNotIn("config-exemple", source(rel), rel)
         self.assertFalse(os.path.exists(os.path.join(ROOT, "sources", "configcheck.py")))
         self.assertNotIn("--config-diff", source("dashboard.py"))
+
+
+class SansExempleTest(unittest.TestCase):
+    """config-exemple.py n'est que de la documentation : le dashboard démarre sans lui (cas Windows signalé)."""
+
+    def test_demarrage_sans_config_exemple(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        for dossier in ("sources", "web"):
+            shutil.copytree(os.path.join(ROOT, dossier), os.path.join(d, dossier),
+                            ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy(os.path.join(ROOT, "dashboard.py"), d)
+        self.assertFalse(os.path.exists(os.path.join(d, "config-exemple.py")))
+        import socket
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        proc = subprocess.Popen([sys.executable, "dashboard.py", "--demo", "--no-browser", "--port", str(port)],
+                                cwd=d, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        tournait = False
+        try:
+            out, err = proc.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            tournait = True                                  # toujours en marche après 2 s : démarrage réussi
+            proc.kill()
+            out, err = proc.communicate()
+        self.assertIsNone(re.search(r"Traceback|FileNotFoundError", out + err), err)
+        self.assertTrue(tournait, err)
+
+    def test_lancer_bat(self):
+        with open(os.path.join(ROOT, "lancer.bat"), "rb") as f:
+            raw = f.read()
+        raw.decode("ascii")                                  # pas d'accents : la console Windows les affiche mal
+        self.assertIn(b"\r\n", raw)
+        self.assertNotIn(b"&&", raw)                         # python n'est essayé que si py n'existe pas
+        self.assertIn(b"where py", raw)
+        self.assertIn(b"https://www.python.org/downloads/", raw)
 
 
 if __name__ == "__main__":

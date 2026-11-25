@@ -291,12 +291,8 @@ class EnvoiTest(DepotBase):
 def load_dashboard():
     if "dashboard" in sys.modules:
         return sys.modules["dashboard"]
-    spec = importlib.util.spec_from_file_location("config", os.path.join(ROOT, "config-exemple.py"))
-    conf = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(conf)
     saved_argv = sys.argv
     sys.argv = saved_argv + ["--demo"]
-    sys.modules["config"] = conf
     try:
         spec = importlib.util.spec_from_file_location("dashboard", os.path.join(ROOT, "dashboard.py"))
         mod = importlib.util.module_from_spec(spec)
