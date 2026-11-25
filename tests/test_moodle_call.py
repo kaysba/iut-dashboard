@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sources import moodle as moodle_mod  # noqa: E402
 from sources.common import SourceError  # noqa: E402
 from sources.moodle import Moodle  # noqa: E402
+from tests.aide import avec_config  # noqa: E402
 
 
 class Fake(BaseHTTPRequestHandler):
@@ -53,8 +54,8 @@ class CallTest(unittest.TestCase):
         self.base = f"http://127.0.0.1:{self.srv.server_port}"
 
     def moodle(self, login="", password=""):
-        m = Moodle(SimpleNamespace(MOODLE_URL=self.base, UNICA_LOGIN=login, UNICA_PASSWORD=password,
-                                   MOODLE_TOKEN="", COURS_MASQUES=[]))
+        avec_config(self, MOODLE_URL=self.base, MOODLE_TOKEN="", COURS_MASQUES=[])
+        m = Moodle(login=login, password=password)
         m._token = "vieux"
         return m
 

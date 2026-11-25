@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Dashboard IUT — serveur local.
 
-Lancer :  python dashboard.py          (Windows : py dashboard.py)
-La connexion se fait dans la page web (identifiant, mail, mot de passe).
-Essai  :  python dashboard.py --demo   (données fictives, sans configuration)
+Lancer :  double-clic sur lancer.bat (Windows), lancer.command (macOS) ou lancer.sh (Linux),
+          ou  python3 dashboard.py
+Tout se règle dans la page web : un assistant s'ouvre au premier lancement.
+Essai  :  python3 dashboard.py --demo           (données fictives)
+          python3 dashboard.py --demo --setup   (l'assistant de premier lancement, en démo)
 """
 import datetime as dt
 import json
 import mimetypes
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -21,69 +24,64 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 if sys.version_info < (3, 8):
-    sys.exit("Python 3.8 ou plus récent est nécessaire.")
+    sys.exit("Python 3.8 ou plus récent est nécessaire : https://www.python.org/downloads/")
 
-def _charger_config():
-    """config.py, ou un message clair s'il n'existe pas (en démo, on continue avec les valeurs par défaut)."""
-    try:
-        import config as module
-        return module
-    except ModuleNotFoundError as e:
-        if e.name != "config":
-            raise
-    from types import SimpleNamespace
-    if "--demo" in sys.argv:
-        print("[config] Pas de config.py : valeurs par défaut utilisées (mode démo).", file=sys.stderr)
-        return SimpleNamespace()
-    from sources.configcheck import MESSAGE_SANS_CONFIG
-    sys.exit(MESSAGE_SANS_CONFIG)
-
-
-config = _charger_config()
-from sources import demo
-from sources.ade import ADE
-from sources.defaults import DEFAULTS, opt
-from sources.common import (UA, Session, SourceError, TTLCache, delete_secret, load_secret, parse_multipart,
-                            save_secret)
-from sources.moodle import DENIED, Moodle, verifier_envoi, verifier_remise
-from sources.notes import Notes
-from sources.outlook import Outlook
+from sources import common, demo, settings  # noqa: E402
+from sources.ade import ADE, MSG_CONSULTATION, MSG_PAS_EDT, NOT_SET as ADE_NOT_SET  # noqa: E402
+from sources.common import (UA, Session, SourceError, TTLCache, delete_secret, load_secret,  # noqa: E402
+                            parse_multipart, save_secret)
+from sources.defaults import DEFAULTS  # noqa: E402
+from sources.moodle import DENIED, Moodle, verifier_envoi, verifier_remise  # noqa: E402
+from sources.notes import Notes  # noqa: E402
+from sources.outlook import Outlook  # noqa: E402
+from sources.settings import opt  # noqa: E402
 
 DEMO = "--demo" in sys.argv
+DEMO_SETUP = DEMO and "--setup" in sys.argv   # démo de l'assistant de premier lancement
 
+# La démo n'utilise ni config.py ni settings.json, et n'écrit rien : captures sans donnée personnelle.
+settings.utiliser_config(None if DEMO else settings.charger_config())
+settings.charger(memoire_seule=DEMO)
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
+# login, prénom (lu dans Moodle) et adresse mail proposée (profil Moodle, sinon identifiant@etu.unice.fr)
+SESSION = {"ok": False, "login": "", "prenom": "", "mail": ""}
+DEMO_STATE = {"mail": not DEMO_SETUP}         # Outlook « connecté » en démo
+
+
+def mail_address():
+    """Adresse utilisée pour Outlook : celle des réglages, sinon celle trouvée à la connexion."""
+    return opt("MAIL_ADRESSE") or SESSION["mail"]
+
+
 sso_session = Session()   # Moodle et Notes partagent les cookies du CAS
-moodle = Moodle(config, sso_session)
-notes = Notes(config, sso_session)
-ade = ADE(config)
-outlook = Outlook(config)
+moodle = Moodle(sso_session)
+notes = Notes(sso_session)
+ade = ADE()
+outlook = Outlook(mail_address)
 cache = TTLCache()
 
 
-SESSION = {"ok": False}   # connecté pendant cette exécution ?
 REMEMBER_FILE = "remember.json"
 SESSION_FILES = ("moodle_token.json", "outlook_token.json", REMEMBER_FILE, "assign_status.json")
 
 
 def logged_in():
-    return DEMO or SESSION["ok"]
+    return (DEMO and not DEMO_SETUP) or SESSION["ok"]
 
 
 def init_session():
     """Au démarrage : on ne reprend la session que si « Se souvenir de moi » avait été coché."""
     saved = load_secret(REMEMBER_FILE)
-    if saved and load_secret("moodle_token.json"):
-        config.UNICA_LOGIN = saved.get("login", "")
-        if saved.get("mail"):
-            config.MAIL_ADRESSE = outlook.address = saved["mail"]
-        SESSION["ok"] = True
+    if saved and (load_secret("moodle_token.json") or opt("MOODLE_TOKEN")):
+        SESSION.update(ok=True, login=saved.get("login", ""), prenom=saved.get("prenom", ""),
+                       mail=saved.get("mail", ""))
+        moodle.set_credentials(SESSION["login"], "")
     else:
         for name in SESSION_FILES:
             delete_secret(name)  # reste d'une ancienne session : on repart à zéro
-    config.UNICA_PASSWORD = ""
-    
+
 
 def forget_unless_remembered():
     if not load_secret(REMEMBER_FILE):
@@ -93,29 +91,33 @@ def forget_unless_remembered():
 
 def api_login(payload):
     login = (payload.get("login") or "").strip()
-    mail = (payload.get("mail") or "").strip()
     pw = payload.get("password") or ""
     remember = bool(payload.get("remember"))
     if not login:
         raise SourceError("Entre ton identifiant UniCA.")
-    if not pw and not (opt(config, "MOODLE_TOKEN") or load_secret("moodle_token.json")):
+    if DEMO:
+        if not pw:
+            raise SourceError("Entre ton mot de passe.")
+        SESSION.update(ok=True, login=login, prenom="Camille", mail="camille.martin@etu.unice.fr")
+        settings.marquer()
+        return {"ok": True}
+    if not pw and not (opt("MOODLE_TOKEN") or load_secret("moodle_token.json")):
         raise SourceError("Entre ton mot de passe.")
-    config.UNICA_LOGIN = login
-    if mail:
-        config.MAIL_ADRESSE = mail
-        outlook.address = mail
     moodle.set_credentials(login, pw)
     if pw:
         delete_secret("moodle_token.json")
+    found = {}
 
     def moodle_login():
         moodle.token()
-        moodle.site()
+        site = moodle.site()
+        found["prenom"] = str(site.get("firstname") or "").strip()
+        found["mail"] = moodle.profile_mail()
 
     # Moodle et Notes se connectent en parallèle ; un échec de Notes ne bloque pas la connexion
     # (il apparaît comme erreur de la source « Notes » dans la barre latérale).
     pool = ThreadPoolExecutor(max_workers=1)
-    notes_job = pool.submit(notes.login, login, pw) if pw and not DEMO else None
+    notes_job = pool.submit(notes.login, login, pw) if pw else None
     ok = False
     try:
         moodle_login()
@@ -137,37 +139,88 @@ def api_login(payload):
             notes.forget()
             sso_session.jar.clear()
     moodle.password = ""          # plus nécessaire en mémoire une fois le jeton obtenu
-    config.UNICA_PASSWORD = ""
+    SESSION.update(ok=True, login=login, prenom=found["prenom"] or opt("PRENOM"),
+                   mail=found["mail"] or f"{login}@etu.unice.fr")
     if remember:
-        save_secret(REMEMBER_FILE, {"login": login, "mail": mail or opt(config, "MAIL_ADRESSE")})
+        save_secret(REMEMBER_FILE, {"login": login, "prenom": SESSION["prenom"], "mail": SESSION["mail"]})
     else:
         delete_secret(REMEMBER_FILE)
         delete_secret("moodle_token.json")   # le jeton reste seulement en mémoire
-    SESSION["ok"] = True
+    settings.marquer()            # l'étape 1 de l'assistant est faite : il ne reviendra plus
     cache.clear()
     return {"ok": True}
 
 
 def api_logout():
-    SESSION["ok"] = False
+    """Ferme la session. Les réglages (settings.json : lien ADE, couleurs…) restent."""
+    SESSION.update(ok=False, login="", prenom="", mail="")
     moodle.set_credentials("", "")
     outlook._pending = None
     notes.forget()          # mot de passe et cookies de la passerelle
     sso_session.jar.clear()
-    config.UNICA_LOGIN = config.UNICA_PASSWORD = ""
+    DEMO_STATE["mail"] = not DEMO_SETUP
     for name in SESSION_FILES:
         delete_secret(name)
     cache.clear()
     return {"ok": True}
 
 
+def api_reset(payload):
+    """« Tout effacer de cet ordinateur » : session, jetons et réglages (tout le dossier .cache/)."""
+    if payload.get("confirm") is not True:
+        raise settings.ReglageInvalide("Confirmation manquante.")
+    api_logout()
+    if not DEMO:
+        shutil.rmtree(common.CACHE_DIR, ignore_errors=True)
+    settings.oublier()
+    return {"ok": True}
+
+
+# Quel cache vider quand un réglage change.
+CACHE_OF = {"ADE_ICAL_URL": ("ade:",), "CACHE_PLANNING": ("ade:",), "COURS_MASQUES": ("res", "assign"),
+            "CACHE_MOODLE": ("res", "assign"), "MAIL_ADRESSE": ("mail",), "CACHE_MAILS": ("mail",),
+            "CACHE_NOTES": ("notes:",)}
+
+
+def api_settings(payload):
+    noms = settings.enregistrer(payload)
+    prefixes = tuple(p for n in noms for p in CACHE_OF.get(n, ()))
+    if prefixes:
+        cache.clear(*prefixes)
+    return {"ok": True, "me": api_me({})}
+
+
+def api_settings_ade(payload):
+    """Vérifie un lien ADE collé dans la page (téléchargement d'une semaine) puis l'enregistre."""
+    url = str(payload.get("url") or "").strip()
+    if not url:
+        raise settings.ReglageInvalide("Colle le lien d'export ADE.")
+    if "direct/index.jsp" in url:
+        raise settings.ReglageInvalide(MSG_CONSULTATION)
+    url = settings.valider_lien_ade("ADE_ICAL_URL", url)
+    try:
+        if DEMO:
+            if "anonymous_cal" not in url:
+                raise SourceError(MSG_PAS_EDT)
+            lundi = dt.date.today() - dt.timedelta(days=dt.date.today().weekday())
+            count = len(demo.events(lundi, lundi + dt.timedelta(days=6)))
+        else:
+            count = ade.tester(url)
+    except SourceError as e:
+        e.status = 422
+        raise
+    settings.enregistrer({"ADE_ICAL_URL": url})
+    cache.clear("ade:")
+    return {"ok": True, "count": count, "ade": settings.masquer_lien(url)}
+
+
 HEX_COLOR = re.compile(r"#[0-9A-Fa-f]{6}")
 
 
 def _subject_config():
-    """MATIERES et COULEURS_SECOURS de config.py, validés (un ancien config.py sans ces lignes reste valide)."""
+    """MATIERES et COULEURS_SECOURS validés (un motif ou une couleur invalide de config.py est ignoré)."""
     matieres = []
-    for i, m in enumerate(opt(config, "MATIERES") or []):
+    for i, m in enumerate(opt("MATIERES") or []):
         try:
             motif, nom, couleur = m["motif"], m.get("nom", ""), m["couleur"]
             re.compile(motif)
@@ -176,9 +229,9 @@ def _subject_config():
         except (re.error, ValueError, KeyError, TypeError, AttributeError) as e:
             print(f"[config] MATIERES[{i}] ignorée : {e}", file=sys.stderr)
             continue
-        matieres.append({"motif": motif, "nom": str(nom), "couleur": couleur})
+        matieres.append({"motif": motif, "nom": str(nom), "couleur": couleur.upper()})
     secours = []
-    for c in opt(config, "COULEURS_SECOURS") or []:
+    for c in opt("COULEURS_SECOURS") or []:
         if isinstance(c, str) and HEX_COLOR.fullmatch(c):
             secours.append(c)
         else:
@@ -186,20 +239,60 @@ def _subject_config():
     return matieres, secours or list(DEFAULTS["COULEURS_SECOURS"])
 
 
-def api_me(_q):
-    name = opt(config, "PRENOM")
-    matieres, secours = _subject_config()
+def _prenom():
+    if SESSION["prenom"]:
+        return SESSION["prenom"]
+    site = moodle._site   # déjà chargé : pas d'appel réseau ici
+    return (site or {}).get("firstname") or opt("PRENOM") or ("Camille" if DEMO and not DEMO_SETUP else "")
+
+
+def _origine(nom):
+    if nom in settings.tout():
+        return "page"
+    cfg = settings.config_actuelle()
+    return "config" if cfg is not None and hasattr(cfg, nom) else "defaut"
+
+
+def _settings_publics():
+    """Réglages affichés dans la page. Le lien ADE n'y est jamais en entier (il contient un jeton)."""
+    login = SESSION["login"]
     return {
-        "matieres": matieres, "couleursSecours": secours,
-        "prenom": name, "demo": DEMO, "loggedIn": logged_in(), "login": opt(config, "UNICA_LOGIN"), "moodleUrl": opt(config, "MOODLE_URL"),
+        "ade": settings.masquer_lien(opt("ADE_ICAL_URL")),
+        "mail": opt("MAIL_ADRESSE"),
+        "mailSuggestion": SESSION["mail"] or (f"{login}@etu.unice.fr" if login else ""),
+        "outlook": DEMO_STATE["mail"] if DEMO else outlook.connected(),
+        "coursMasques": opt("COURS_MASQUES"),
+        "theme": opt("THEME"),
+        "cache": {n: opt(n) for n in ("CACHE_PLANNING", "CACHE_MOODLE", "CACHE_MAILS", "CACHE_NOTES")},
+        "port": opt("PORT"),
+        "portActuel": PORT_ACTUEL[0],
+        "origine": {n: _origine(n) for n in ("ADE_ICAL_URL", "MAIL_ADRESSE", "MATIERES", "COURS_MASQUES", "PORT")},
+        "configPy": settings.config_actuelle() is not None,
+    }
+
+
+PORT_ACTUEL = [None]
+
+
+def api_me(_q):
+    matieres, secours = _subject_config()
+    me = {
+        "matieres": matieres, "couleursSecours": secours, "theme": opt("THEME"),
+        "prenom": _prenom(), "demo": DEMO, "loggedIn": logged_in(),
+        # Assistant de premier lancement : rien n'est configuré (ni réglages de la page, ni config.py).
+        "setup": not logged_in() and not settings.existe() and (DEMO or settings.config_actuelle() is None),
+        "login": SESSION["login"] or opt("UNICA_LOGIN"), "moodleUrl": opt("MOODLE_URL"),
         "sources": {
-            "moodle": DEMO or bool(opt(config, "MOODLE_TOKEN") or (opt(config, "UNICA_LOGIN") and opt(config, "UNICA_PASSWORD"))),
-            "ade": DEMO or bool(opt(config, "ADE_ICAL_URL")),
-            "mail": DEMO or outlook.connected(),
+            "moodle": logged_in(),
+            "ade": (DEMO and not DEMO_SETUP) or bool(opt("ADE_ICAL_URL")),
+            "mail": DEMO_STATE["mail"] if DEMO else outlook.connected(),
             "notes": DEMO or notes.has_password(),
         },
-        "mail": outlook.address,
+        "mail": mail_address(),
     }
+    if logged_in():
+        me["settings"] = _settings_publics()
+    return me
 
 
 def _date(q, key, default):
@@ -215,28 +308,32 @@ def api_planning(q, force):
     end = _date(q, "end", start + dt.timedelta(days=6))
     if (end - start).days > 62:
         raise SourceError("Période trop longue (2 mois maximum).")
+    if DEMO_SETUP and not opt("ADE_ICAL_URL"):
+        raise SourceError(ADE_NOT_SET)
     if DEMO:
         return {"events": demo.events(start, end)}
     key = f"ade:{start}:{end}"
-    return {"events": cache.get(key, opt(config, "CACHE_PLANNING"), lambda: ade.events(start, end), force)}
+    return {"events": cache.get(key, opt("CACHE_PLANNING"), lambda: ade.events(start, end), force)}
 
 
 def api_resources(_q, force):
     if DEMO:
         return {"courses": demo.resources()}
-    return {"courses": cache.get("res", opt(config, "CACHE_MOODLE"), moodle.resources, force)}
+    return {"courses": cache.get("res", opt("CACHE_MOODLE"), moodle.resources, force)}
 
 
 def api_assignments(_q, force):
     if DEMO:
         return {"assignments": demo.assignments()}
-    return {"assignments": cache.get("assign", opt(config, "CACHE_MOODLE"), moodle.assignments, force)}
+    return {"assignments": cache.get("assign", opt("CACHE_MOODLE"), moodle.assignments, force)}
 
 
 def api_mails(_q, force):
     if DEMO:
+        if not DEMO_STATE["mail"]:
+            raise SourceError("NOT_CONNECTED")
         return demo.mails()
-    return cache.get("mail", opt(config, "CACHE_MAILS"), outlook.messages, force)
+    return cache.get("mail", opt("CACHE_MAILS"), outlook.messages, force)
 
 
 def api_notes(q, force):
@@ -246,7 +343,7 @@ def api_notes(q, force):
     sid = int(sid) if sid else None
     if DEMO:
         return demo.notes(sid)
-    ttl = opt(config, "CACHE_NOTES")
+    ttl = opt("CACHE_NOTES")
     return cache.get(f"notes:{sid}", ttl, lambda: notes.donnees(sid), force)
 
 
@@ -255,12 +352,48 @@ def api_notes_login(payload):
     pw = payload.get("password") or ""
     if not pw:
         raise SourceError("Entre ton mot de passe.")
-    notes.login(opt(config, "UNICA_LOGIN"), pw)
+    notes.login(SESSION["login"], pw)
     cache.clear()
     return {"ok": True}
 
 
+def api_mail_auth_url(_q, _force):
+    return {"url": outlook.auth_url()}
+
+
+def api_mail_finish(payload):
+    url = str(payload.get("url") or "")
+    if DEMO:
+        if "code=" not in url:
+            raise SourceError("Adresse collée incorrecte : copie toute l'adresse de l'onglet (https://localhost/?code=…)")
+        DEMO_STATE["mail"] = True
+    else:
+        outlook.finish_auth(url)
+    cache.clear("mail")
+    return {"ok": True}
+
+
+def api_mail_disconnect(_payload):
+    if DEMO:
+        DEMO_STATE["mail"] = False
+    else:
+        outlook.disconnect()
+    cache.clear("mail")
+    return {"ok": True}
+
+
+# POST qui exigent une session connectée (en plus des contrôles Host et Origin).
+POST_ROUTES = {
+    "/api/notes/login": lambda p: api_notes_login(p),
+    "/api/mail/finish": api_mail_finish,
+    "/api/mail/disconnect": api_mail_disconnect,
+    "/api/settings": api_settings,
+    "/api/settings/ade": api_settings_ade,
+    "/api/reset": api_reset,
+}
+
 ROUTES = {
+    "/api/mail/auth-url": api_mail_auth_url,
     "/api/notes": api_notes,
     "/api/planning": api_planning,
     "/api/resources": api_resources,
@@ -299,6 +432,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": msg, "code": "depot_refuse"}, 403)
         if msg == "NOTES_LOGIN_REQUIRED":
             return self._json({"error": "Entre ton mot de passe pour afficher tes notes.", "code": "notes_login_required"}, 401)
+        if msg == ADE_NOT_SET:
+            return self._json({"error": "Emploi du temps pas encore configuré.", "code": "ade_not_set"}, 409)
         if msg == "NOT_CONNECTED":
             return self._json({"error": "Outlook n'est pas connecté.", "code": "mail_not_connected"}, 401)
         if not isinstance(e, SourceError):
@@ -313,15 +448,13 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(url.query)
         force = q.get("refresh", ["0"])[0] == "1"
         depot_get = re.fullmatch(r"/api/assignments/(\d+)/depot", url.path)
-        if (url.path in ROUTES or depot_get or url.path in ("/api/file", "/api/mail/auth-url", "/api/notes/pdf")) and not logged_in():
+        if (url.path in ROUTES or depot_get or url.path in ("/api/file", "/api/notes/pdf")) and not logged_in():
             return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
         try:
             if url.path == "/api/me":
                 return self._json(api_me(q))
             if url.path in ROUTES:
                 return self._json(ROUTES[url.path](q, force))
-            if url.path == "/api/mail/auth-url":
-                return self._json({"url": outlook.auth_url()})
             if depot_get:
                 aid = int(depot_get.group(1))
                 return self._json(demo.depot_state(aid) if DEMO else moodle.depot_state(aid))
@@ -342,38 +475,31 @@ class Handler(BaseHTTPRequestHandler):
         depot_post = re.fullmatch(r"/api/assignments/(\d+)/(draft|submit|delete-file)", self.path)
         if depot_post:
             return self._depot_post(int(depot_post.group(1)), depot_post.group(2))
-        length = int(self.headers.get("Content-Length") or 0)
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except ValueError:
-            payload = {}
-        try:
+            try:
+                payload = json.loads(self._read_body(1048576) or b"{}")
+            except ValueError:
+                raise settings.ReglageInvalide("JSON illisible.")
+            if not isinstance(payload, dict):
+                raise settings.ReglageInvalide("Objet JSON attendu.")
             if self.path == "/api/login":
                 return self._json(api_login(payload))
             if self.path == "/api/logout":
                 return self._json(api_logout())
-            if self.path == "/api/notes/login":
-                if not logged_in():
-                    return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
-                return self._json(api_notes_login(payload))
-            if self.path == "/api/mail/finish":
-                outlook.finish_auth(payload.get("url", ""))
-                cache.clear()
-                return self._json({"ok": True})
-            if self.path == "/api/mail/disconnect":
-                outlook.disconnect()
-                cache.clear()
-                return self._json({"ok": True})
+            if self.path not in POST_ROUTES:
+                return self.send_error(404)
+            if not logged_in():
+                return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
+            return self._json(POST_ROUTES[self.path](payload))
         except Exception as e:  # noqa: BLE001
             return self._error(e)
-        self.send_error(404)
 
     def _read_body(self, limit):
         """Lit le corps en flux, en mémoire (jamais sur le disque), sans dépasser la limite annoncée."""
         length = int(self.headers.get("Content-Length") or 0)
         if length > limit:
             # Vide le corps reçu (sans le garder) pour que le navigateur lise la réponse au lieu d'une coupure.
-            cap = opt(config, "UPLOAD_MAX") + 1048576
+            cap = opt("UPLOAD_MAX") + 1048576
             if length <= cap:
                 left = length
                 while left > 0:
@@ -401,7 +527,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not logged_in():
                 return self._json({"error": "Connecte-toi d'abord.", "code": "login_required"}, 401)
-            upload_max = opt(config, "UPLOAD_MAX")
+            upload_max = opt("UPLOAD_MAX")
             if action == "draft":
                 state = demo.depot_state(aid) if DEMO else moodle.depot_state(aid)
                 depot = state["depot"]
@@ -492,17 +618,24 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def _port_argument():
+    """--port 9000 (ou --port=9000) : passe avant le réglage, pour ce lancement seulement."""
+    for i, a in enumerate(sys.argv):
+        v = a.split("=", 1)[1] if a.startswith("--port=") else sys.argv[i + 1] if a == "--port" and i + 1 < len(sys.argv) else None
+        if v is not None:
+            if not v.isdigit() or not 1024 <= int(v) <= 65535:
+                sys.exit("--port : nombre entre 1024 et 65535 attendu.")
+            return int(v)
+    return None
+
+
 def main():
-    from sources import configcheck
-    if "--config-diff" in sys.argv:
-        configcheck.diff_complet(config, sys.stdout)
-        return
-    if hasattr(config, "__file__"):   # sans config.py (démo), le message de démarrage l'a déjà dit
-        configcheck.avertir(config, sys.stderr)
     mimetypes.add_type("text/javascript", ".js")
     mimetypes.add_type("text/css", ".css")
     mimetypes.add_type("font/woff2", ".woff2")
-    port = opt(config, "PORT")
+    if settings.config_actuelle() is not None:
+        print("[config] config.py lu : ses options servent quand la page ne les règle pas.", file=sys.stderr)
+    port = _port_argument() or opt("PORT")
     if not DEMO:
         import atexit
         init_session()
@@ -511,11 +644,13 @@ def main():
         httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     except OSError:
         sys.exit(f"\n  Le port {port} est déjà utilisé : le dashboard tourne sans doute déjà.\n"
-                 f"  Ferme l'ancienne instance (Linux : pkill -f dashboard.py) ou change PORT dans config.py.\n")
+                 f"  Ouvre http://localhost:{port}/ dans ton navigateur, ou ferme l'ancienne fenêtre du dashboard.\n"
+                 f"  (Si c'est un autre programme : change le port dans Réglages > Avancé.)\n")
+    PORT_ACTUEL[0] = port
     url = f"http://localhost:{port}/"
     print(f"\n  Dashboard IUT {'(mode démo) ' if DEMO else ''}: {url}")
-    print("  Ctrl+C pour arrêter.\n")
-    if opt(config, "OUVRIR_NAVIGATEUR") and "--no-browser" not in sys.argv:
+    print("  Laisse cette fenêtre ouverte pendant que tu utilises le dashboard. Ctrl+C pour arrêter.\n")
+    if opt("OUVRIR_NAVIGATEUR") and "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         httpd.serve_forever()

@@ -99,8 +99,9 @@ async function api(path, { maxAge = 300000, source } = {}) {
     })
     .catch((e) => {
       delete store[path];
-      if (e.code === "login_required") { showLogin("Ta session a expiré. Reconnecte-toi."); throw e; }
-      if (source) setStatus(source, e.code === "mail_not_connected" || e.code === "notes_login_required" ? "off" : "err", e.message);
+      if (e.code === "login_required") { showAuth("Ta session a expiré. Reconnecte-toi."); throw e; }
+      const off = ["mail_not_connected", "notes_login_required", "ade_not_set"].includes(e.code);
+      if (source) setStatus(source, off ? "off" : "err", e.message);
       throw e;
     });
   store[path] = { t: Date.now(), p };
@@ -120,6 +121,10 @@ function setStatus(src, s, msg) {
 }
 
 function errorBox(e, what) {
+  if (e.code === "ade_not_set") {
+    return `<div class="empty">Ton emploi du temps n'est pas encore relié au dashboard.
+      <a class="linkish" href="#/reglages">Ajouter mon lien ADE dans les réglages</a></div>`;
+  }
   return `<div class="err"><b>${esc(what)} indisponible</b>${esc(e.message)}</div>`;
 }
 
@@ -704,9 +709,9 @@ document.addEventListener("click", (e) => {
   if (b) openMail(mailStore[+b.dataset.mail]);
 });
 
-function mailConnect() {
-  return `<div class="panel connect">
-    <h2>Connecter ta boîte Outlook</h2>
+function mailConnect({ bare = false } = {}) {
+  return `<div class="${bare ? "connect bare" : "panel connect"}">
+    ${bare ? "" : "<h2>Connecter ta boîte Outlook</h2>"}
     <p>Microsoft demande une connexion unique. Elle se renouvelle ensuite toute seule.</p>
     <ol>
       <li>Clique sur <b>Ouvrir la connexion Microsoft</b> et connecte-toi dans le nouvel onglet.</li>
@@ -720,13 +725,15 @@ function mailConnect() {
     </form></div>`;
 }
 
-function bindMailConnect(root, after) {
+function bindMailConnect(root, after, before) {
   const login = $("#mail-login", root);
   if (!login) return;
   const form = $("#mail-form", root);
   const input = form.url;
   login.addEventListener("click", async () => {
+    if (before && (await before()) === false) return;
     const r = await fetch("/api/mail/auth-url").then((x) => x.json());
+    if (r.error) return toast(r.error);
     window.open(r.url, "_blank", "noopener");
     input.focus();
   });
@@ -810,7 +817,7 @@ async function viewHome() {
   const me = window.__me;
   main.innerHTML = `<div class="home-grid">
     <header class="head">
-      <div><h1>Bonjour ${esc(me.prenom)}</h1><p id="next">${longDay(today)}</p></div>
+      <div><h1>Bonjour${me.prenom ? ` ${esc(me.prenom)}` : ""}</h1><p id="next">${longDay(today)}</p></div>
       ${me.demo ? '<span class="demo-banner">Mode démo : données fictives</span>' : ""}
     </header>
     <section class="day" id="day"><div class="day-top"><h2>Ta journée</h2><span></span></div>${skel(2)}</section>
@@ -1337,13 +1344,13 @@ async function viewMails() {
 }
 
 /* ── Routeur ───────────────────────────────────────────── */
-const ROUTES = { "": ["home", viewHome], planning: ["planning", viewPlanning], ressources: ["ressources", viewResources], devoirs: ["devoirs", viewAssignments], notes: ["notes", viewNotes], mails: ["mails", viewMails] };
+const ROUTES = { "": ["home", viewHome], planning: ["planning", viewPlanning], ressources: ["ressources", viewResources], devoirs: ["devoirs", viewAssignments], notes: ["notes", viewNotes], mails: ["mails", viewMails], reglages: ["reglages", viewSettings] };
 
 function route() {
   if (document.body.classList.contains("locked")) return;
   const key = location.hash.replace(/^#\/?/, "").split("?")[0];
   const [name, view] = ROUTES[key] || ROUTES[""];
-  document.querySelectorAll(".nav a").forEach((a) => { if (a.dataset.route === name) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  document.querySelectorAll(".nav a, .side-link").forEach((a) => { if (a.dataset.route === name) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   return view();
 }
 
@@ -1367,43 +1374,393 @@ setInterval(() => {
   badges();
 }, 60000);
 
-function showLogin(message) {
-  document.body.classList.add("locked");
-  const me = window.__me;
-  main.innerHTML = `<form class="panel login" id="login" autocomplete="off">
-    <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>IUT Nice<small>BUT Informatique</small></span></div>
-    <h1>Connexion</h1>
-    <p>Avec ton compte de l'université.</p>
-    <div class="msg" id="login-msg" role="alert">${esc(message || "")}</div>
-    <label>Identifiant UniCA<input name="login" value="${esc(me.login || "")}" autocomplete="username" autofocus required></label>
-    <label>Adresse mail<input name="mail" type="email" value="${esc(me.mail || "")}" autocomplete="email"></label>
+
+/* ── Envoi JSON commun (connexion, réglages) ───────────── */
+async function postJSON(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const data = await r.json().catch(() => ({ error: `Réponse illisible (HTTP ${r.status})` }));
+  if (!r.ok || data.error) throw Object.assign(new Error(data.error || `HTTP ${r.status}`), { code: data.code });
+  return data;
+}
+const refreshMe = async () => { window.__me = await fetch("/api/me").then((x) => x.json()); return window.__me; };
+const dropStore = (...prefixes) => Object.keys(store).forEach((k) => { if (prefixes.some((p) => k.startsWith(p))) delete store[k]; });
+
+/* ── Connexion : assistant au premier lancement, sinon écran simple ── */
+function showAuth(message) {
+  if ((window.__me || {}).setup) return showSetup();
+  return showLogin(message);
+}
+
+const brandHTML = '<div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>IUT Nice<small>BUT Informatique</small></span></div>';
+
+function accountFields(me) {
+  return `<label>Identifiant UniCA<input name="login" value="${esc(me.login || "")}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="ex. ab123456" required></label>
     <label>Mot de passe<input name="password" type="password" autocomplete="current-password"></label>
-    <label class="remember"><input name="remember" type="checkbox"> Se souvenir de moi</label>
-    <button class="btn primary" type="submit">Se connecter</button>
-    <p class="note">Ton mot de passe n'est jamais enregistré. « Se souvenir de moi » garde seulement une session Moodle et Outlook sur cet ordinateur, jusqu'à ce que tu cliques sur Se déconnecter. Après un redémarrage, les notes te redemanderont ton mot de passe.</p>
-  </form>`;
-  $("#login").addEventListener("submit", async (ev) => {
+    <label class="remember"><input name="remember" type="checkbox"> Se souvenir de moi</label>`;
+}
+
+// Connexion Moodle + Notes. onOk est appelé une fois connecté (après relecture de /api/me).
+function bindAccount(form, label, onOk) {
+  const btn = $("button[type=submit]", form), msg = $(".msg", form);
+  form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    const f = ev.target, btn = $("button", f), msg = $("#login-msg");
     btn.disabled = true;
     btn.textContent = "Connexion à Moodle…";
     msg.textContent = "";
     try {
-      const r = await fetch("/api/login", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login: f.login.value, mail: f.mail.value, password: f.password.value, remember: f.remember.checked }),
-      });
-      const data = await r.json();
-      if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
-      f.password.value = "";
-      window.__me = await fetch("/api/me").then((x) => x.json());
-      start();
+      await postJSON("/api/login", { login: form.login.value, password: form.password.value, remember: form.remember.checked });
+      form.password.value = "";
+      await refreshMe();
+      onOk();
     } catch (e) {
       msg.textContent = e.message;
       btn.disabled = false;
-      btn.textContent = "Se connecter";
-      f.password.focus();
+      btn.textContent = label;
+      form.password.focus();
     }
+  });
+}
+
+const PW_NOTE = "Ton mot de passe n'est jamais enregistré. « Se souvenir de moi » garde seulement une session Moodle et Outlook sur cet ordinateur, jusqu'à ce que tu cliques sur Se déconnecter.";
+
+function showLogin(message) {
+  document.body.classList.add("locked");
+  main.innerHTML = `<form class="panel login" id="login" autocomplete="off">
+    ${brandHTML}
+    <h1>Connexion</h1>
+    <p>Avec ton compte de l'université.</p>
+    <div class="msg" role="alert">${esc(message || "")}</div>
+    ${accountFields(window.__me)}
+    <button class="btn primary" type="submit">Se connecter</button>
+    <p class="note">${PW_NOTE} Après un redémarrage, les notes te redemanderont ton mot de passe.</p>
+  </form>`;
+  const f = $("#login");
+  (f.login.value ? f.password : f.login).focus();
+  bindAccount(f, "Se connecter", start);
+}
+
+/* ── Lien ADE : instructions, collage, vérification par le serveur ── */
+const ADE_SITE = "https://edtweb.univ-cotedazur.fr";
+function adeForm() {
+  return `<div class="ade-form">
+    <ol class="ade-steps">
+      <li>Ouvre ADE avec le bouton ci-dessous et affiche ton emploi du temps.</li>
+      <li>Clique sur l'icône <b>Exporter l'agenda</b> (un calendrier avec une flèche).</li>
+      <li>Choisis une période quelconque, puis clique sur <b>Générer URL</b>.</li>
+      <li>Copie l'adresse obtenue (elle contient <code>anonymous_cal.jsp</code>) et colle-la ci-dessous.</li>
+    </ol>
+    <a class="btn" href="${ADE_SITE}" target="_blank" rel="noopener">${ICON.ext}Ouvrir ADE</a>
+    <form class="ade-input" novalidate>
+      <label class="sr" for="ade-url">Lien d'export ADE</label>
+      <input id="ade-url" name="url" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+        placeholder="https://edtweb.univ-cotedazur.fr/…/anonymous_cal.jsp?data=…">
+      <button class="btn primary" type="submit">Vérifier</button>
+    </form>
+    <p class="check" role="status" aria-live="polite"></p>
+  </div>`;
+}
+
+const coursCount = (n) => (n === 0 ? "Le lien fonctionne, mais aucun cours n'est prévu cette semaine."
+  : `${n} cours trouvé${n > 1 ? "s" : ""} cette semaine`);
+
+function bindAdeForm(root, onOk) {
+  const form = $(".ade-input", root), input = form.url, msg = $(".check", root), btn = $("button", form);
+  let busy = false;
+  const check = async () => {
+    const url = input.value.trim();
+    if (!url) { msg.className = "check bad"; msg.textContent = "Colle d'abord le lien d'export ADE."; return; }
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    msg.className = "check wait";
+    msg.textContent = "Vérification du lien auprès d'ADE…";
+    try {
+      const r = await postJSON("/api/settings/ade", { url });
+      msg.className = "check ok";
+      msg.textContent = coursCount(r.count);
+      input.value = "";
+      dropStore("/api/planning");
+      await refreshMe();
+      onOk(r);
+    } catch (e) {
+      if (e.code === "login_required") return showAuth("Ta session a expiré. Reconnecte-toi.");
+      msg.className = "check bad";
+      msg.textContent = e.message;
+      input.select();
+    } finally {
+      busy = false;
+      btn.disabled = false;
+    }
+  };
+  form.addEventListener("submit", (ev) => { ev.preventDefault(); check(); });
+  input.addEventListener("paste", () => setTimeout(check, 0));
+}
+
+/* ── Assistant de premier lancement ────────────────────── */
+const wizard = { step: 1 };
+const WIZ_STEPS = ["Compte UniCA", "Emploi du temps", "Mails"];
+
+function stepsBar(n) {
+  return `<ol class="steps" aria-label="Étapes">${WIZ_STEPS.map((label, i) => {
+    const st = i + 1 < n ? "done" : i + 1 === n ? "current" : "";
+    return `<li class="${st}"${st === "current" ? ' aria-current="step"' : ""}><b>${i + 1 < n ? "✓" : i + 1}</b><span>${label}</span></li>`;
+  }).join("")}</ol>`;
+}
+
+function showSetup() {
+  document.body.classList.add("locked");
+  const n = wizard.step;
+  const me = window.__me;
+  const wrap = (inner) => `<div class="panel wizard">${brandHTML}${stepsBar(n)}${inner}</div>`;
+  if (n === 1) {
+    main.innerHTML = wrap(`<form id="login" autocomplete="off" class="wiz-body">
+      <h1>Bienvenue</h1>
+      <p class="lead">Trois étapes pour régler ton tableau de bord. Seule la première est obligatoire.</p>
+      <div class="msg" role="alert"></div>
+      ${accountFields(me)}
+      <p class="hint">Ton prénom et ton adresse mail sont lus dans ton profil Moodle : rien d'autre à remplir.</p>
+      <div class="wiz-foot"><span></span><button class="btn primary" type="submit">Continuer</button></div>
+      <p class="note">${PW_NOTE}</p>
+    </form>`);
+    const f = $("#login");
+    (f.login.value ? f.password : f.login).focus();
+    bindAccount(f, "Continuer", () => { wizard.step = 2; showSetup(); });
+    return;
+  }
+  if (n === 2) {
+    main.innerHTML = wrap(`<div class="wiz-body">
+      <h1>Ton emploi du temps</h1>
+      <p class="lead">${me.prenom ? `Bonjour ${esc(me.prenom)} ! ` : ""}Le dashboard lit ton emploi du temps dans ADE grâce à ton lien d'export personnel.</p>
+      ${adeForm()}
+      <div class="wiz-foot"><button class="btn ghost" type="button" id="wiz-skip">Passer cette étape</button>
+        <button class="btn primary" type="button" id="wiz-next" hidden>Continuer</button></div>
+    </div>`);
+    bindAdeForm(main, () => { $("#wiz-next").hidden = false; $("#wiz-skip").hidden = true; $("#wiz-next").focus(); });
+    $("#wiz-skip").addEventListener("click", () => { wizard.step = 3; showSetup(); });
+    $("#wiz-next").addEventListener("click", () => { wizard.step = 3; showSetup(); });
+    $("#ade-url").focus();
+    return;
+  }
+  const s = me.settings || {};
+  const connected = s.outlook;
+  main.innerHTML = wrap(`<div class="wiz-body">
+    <h1>Tes mails <span class="opt">facultatif</span></h1>
+    <p class="lead">Pour voir tes derniers mails de l'université sur l'accueil.</p>
+    <label class="field">Adresse mail<input id="wiz-mail" type="email" autocomplete="email" spellcheck="false"
+      value="${esc(s.mail || s.mailSuggestion || "")}"></label>
+    <p class="check bad" id="wiz-mail-err" role="alert"></p>
+    ${connected ? '<p class="check ok">Outlook est connecté.</p>' : mailConnect({ bare: true })}
+    <div class="wiz-foot"><button class="btn ghost" type="button" id="wiz-skip">Passer</button>
+      <button class="btn primary" type="button" id="wiz-done">Terminer</button></div>
+  </div>`);
+  const mailInput = $("#wiz-mail");
+  const saveMail = async () => {
+    const v = mailInput.value.trim();
+    if (!v || v === (window.__me.settings || {}).mail) return true;
+    try {
+      await saveSettings({ MAIL_ADRESSE: v }, null);
+      $("#wiz-mail-err").textContent = "";
+      return true;
+    } catch (e) {
+      $("#wiz-mail-err").textContent = e.message;
+      mailInput.focus();
+      return false;
+    }
+  };
+  bindMailConnect(main, async () => { await refreshMe(); showSetup(); }, saveMail);
+  $("#wiz-skip").addEventListener("click", finishSetup);
+  $("#wiz-done").addEventListener("click", async () => { if (await saveMail()) finishSetup(); });
+}
+
+async function finishSetup() {
+  wizard.step = 1;
+  await refreshMe();
+  if (location.hash && location.hash !== "#/") location.hash = "#/";
+  start();
+}
+
+/* ── Réglages ──────────────────────────────────────────── */
+// Enregistre tout de suite (POST /api/settings) ; le serveur valide et vide le cache concerné.
+async function saveSettings(changes, msg = "Enregistré") {
+  const data = await postJSON("/api/settings", changes).catch((e) => {
+    if (e.code === "login_required") showAuth("Ta session a expiré. Reconnecte-toi.");
+    throw e;
+  });
+  window.__me = data.me;
+  const keys = Object.keys(changes);
+  if (keys.some((k) => k === "ADE_ICAL_URL" || k === "CACHE_PLANNING")) dropStore("/api/planning");
+  if (keys.some((k) => k === "COURS_MASQUES" || k === "CACHE_MOODLE")) dropStore("/api/resources", "/api/assignments");
+  if (keys.some((k) => k === "MAIL_ADRESSE" || k === "CACHE_MAILS")) dropStore("/api/mails");
+  if (msg) toast(msg);
+  return data.me;
+}
+
+const SET_ORIGIN = { config: "vient de config.py", defaut: "valeur par défaut" };
+const originNote = (s, key) => (s.origine && SET_ORIGIN[s.origine[key]] && s.origine[key] === "config"
+  ? `<span class="from">${SET_ORIGIN.config}</span>` : "");
+const CACHE_LABELS = { CACHE_PLANNING: "Emploi du temps", CACHE_MOODLE: "Moodle (cours, devoirs)", CACHE_MAILS: "Mails", CACHE_NOTES: "Notes" };
+
+function validRegex(src) { try { new RegExp(src); return ""; } catch (e) { return e.message; } }
+
+async function viewSettings() {
+  const me = window.__me;
+  const s = me.settings || {};
+  const matieres = me.matieres || [];
+  main.innerHTML = `<header class="head"><div><h1>Réglages</h1>
+      <p>Enregistrés sur cet ordinateur, dès que tu changes quelque chose.</p></div></header>
+    <div class="settings">
+    <section class="panel set-sec" aria-labelledby="set-account"><h2 id="set-account">Compte</h2>
+      <div class="set-row"><span class="set-label">Identifiant UniCA</span><span class="set-val"><b>${esc(me.login || "–")}</b></span></div>
+      <div class="set-row"><span class="set-label">Prénom</span><span class="set-val"><b>${esc(me.prenom || "–")}</b><span class="from">lu dans Moodle</span></span></div>
+      <div class="set-row"><span></span><span class="set-val"><button class="btn" type="button" id="set-logout">Se déconnecter</button></span></div>
+    </section>
+
+    <section class="panel set-sec" aria-labelledby="set-ade"><h2 id="set-ade">Emploi du temps</h2>
+      <div class="set-row"><span class="set-label">Lien ADE</span>
+        <span class="set-val">${s.ade ? `<code class="token" title="Lien masqué : il contient un jeton personnel">${esc(s.ade)}</code>${originNote(s, "ADE_ICAL_URL")}` : '<span class="muted">Aucun lien : l\'emploi du temps n\'est pas affiché.</span>'}
+        <button class="btn" type="button" id="ade-change" aria-expanded="false">${s.ade ? "Changer" : "Ajouter"}</button></span></div>
+      <div id="ade-box" hidden></div>
+    </section>
+
+    <section class="panel set-sec" aria-labelledby="set-mail"><h2 id="set-mail">Mails</h2>
+      <div class="set-row"><label class="set-label" for="set-mail-input">Adresse</label>
+        <span class="set-val"><input class="inp" id="set-mail-input" type="email" spellcheck="false" autocomplete="email"
+          value="${esc(s.mail || "")}" placeholder="${esc(s.mailSuggestion || "prenom.nom@etu.unice.fr")}">${originNote(s, "MAIL_ADRESSE")}</span></div>
+      <div class="set-row"><span class="set-label">Outlook</span>
+        <span class="set-val"><span class="state"><i class="dot ${s.outlook ? "ok" : ""}"></i>${s.outlook ? "Connecté" : "Non connecté"}</span>
+        <button class="btn" type="button" id="mail-toggle">${s.outlook ? "Déconnecter" : "Connecter"}</button></span></div>
+      <div id="mail-box" hidden></div>
+    </section>
+
+    <section class="panel set-sec" aria-labelledby="set-colors"><h2 id="set-colors">Couleurs des matières</h2>
+      <p class="set-help">La couleur sert dans le planning, les devoirs et les ressources.${originNote(s, "MATIERES")}</p>
+      <ul class="subj-list">${matieres.map((m, i) => `<li><input type="color" value="${esc(m.couleur.toLowerCase())}" data-i="${i}" aria-label="Couleur de ${esc(m.nom || m.motif)}"><span>${esc(m.nom || m.motif)}</span></li>`).join("") || '<li class="muted">Aucune matière définie.</li>'}</ul>
+      <div class="set-actions"><button class="btn" type="button" id="colors-reset">Couleurs par défaut</button></div>
+      <details class="adv"><summary>Avancé : reconnaître les matières</summary>
+        <p class="set-help">Chaque motif est une expression régulière, sans accents ni majuscules, comparée au nom du cours. La première qui correspond gagne.</p>
+        <div class="motifs">${matieres.map((m, i) => `<div class="motif-row"><input class="inp" data-nom="${i}" value="${esc(m.nom)}" aria-label="Nom affiché">
+          <input class="inp mono" data-motif="${i}" value="${esc(m.motif)}" spellcheck="false" aria-label="Motif de ${esc(m.nom)}"><span class="check bad" data-err="${i}"></span></div>`).join("")}</div>
+      </details>
+    </section>
+
+    <section class="panel set-sec" aria-labelledby="set-display"><h2 id="set-display">Affichage</h2>
+      <div class="set-row"><span class="set-label">Thème</span><span class="set-val">
+        <span class="seg" role="group" aria-label="Thème">${["system", "light", "dark"].map((t) => `<button type="button" data-theme="${t}" aria-pressed="${themeMode() === t}">${{ system: "Système", light: "Clair", dark: "Sombre" }[t]}</button>`).join("")}</span></span></div>
+      <div class="set-row top"><label class="set-label" for="set-hidden">Cours à masquer</label>
+        <span class="set-val col"><textarea class="inp" id="set-hidden" rows="3" spellcheck="false" placeholder="Espace étudiants&#10;Bibliothèque">${esc((s.coursMasques || []).join("\n"))}</textarea>
+        <span class="set-help">Un mot par ligne : les cours Moodle dont le nom contient ce mot sont masqués.</span></span></div>
+    </section>
+
+    <details class="panel set-sec adv-sec"><summary><h2>Avancé</h2></summary>
+      <p class="set-help">Durée pendant laquelle le dashboard garde les données avant de les redemander (en minutes).</p>
+      ${Object.entries(CACHE_LABELS).map(([k, label]) => `<div class="set-row"><label class="set-label" for="c-${k}">${label}</label>
+        <span class="set-val"><input class="inp num" id="c-${k}" type="number" min="0" max="1440" step="1" data-cache="${k}" value="${Math.round(((s.cache || {})[k] || 0) / 60)}"> min</span></div>`).join("")}
+      <div class="set-row"><label class="set-label" for="set-port">Port</label>
+        <span class="set-val"><input class="inp num" id="set-port" type="number" min="1024" max="65535" value="${esc(s.port || "")}">
+        <span class="set-help">Pris en compte au prochain lancement.${s.portActuel && s.port !== s.portActuel ? ` En ce moment : ${s.portActuel}.` : ""}</span></span></div>
+    </details>
+
+    <section class="panel set-sec danger-sec" aria-labelledby="set-wipe"><h2 id="set-wipe">Effacer</h2>
+      <p class="set-help">Supprime de cet ordinateur la session, les jetons Moodle et Outlook et tous les réglages (lien ADE, couleurs…). Le dashboard revient à l'assistant de premier lancement.</p>
+      <div class="set-actions"><button class="btn danger" type="button" id="wipe">Tout effacer de cet ordinateur</button></div>
+    </section>
+    </div>`;
+
+  const fail = (e) => toast(e.message);
+  $("#set-logout")?.addEventListener("click", logout);
+
+  // Emploi du temps
+  $("#ade-change").addEventListener("click", (ev) => {
+    const box = $("#ade-box");
+    box.hidden = !box.hidden;
+    ev.currentTarget.setAttribute("aria-expanded", String(!box.hidden));
+    if (box.hidden) return;
+    box.innerHTML = adeForm();
+    bindAdeForm(box, (r) => { toast(`Enregistré : ${coursCount(r.count).toLowerCase()}`); setTimeout(viewSettings, 1200); });
+    $("#ade-url", box).focus();
+  });
+
+  // Mails
+  const mailInput = $("#set-mail-input");
+  mailInput.addEventListener("change", () => {
+    saveSettings({ MAIL_ADRESSE: mailInput.value.trim() || null }).then(viewSettings).catch(fail);
+  });
+  $("#mail-toggle").addEventListener("click", async (ev) => {
+    if (s.outlook) {
+      await postJSON("/api/mail/disconnect").catch(fail);
+      dropStore("/api/mails");
+      await refreshMe();
+      toast("Outlook déconnecté");
+      return viewSettings();
+    }
+    const box = $("#mail-box");
+    box.hidden = !box.hidden;
+    ev.currentTarget.setAttribute("aria-expanded", String(!box.hidden));
+    box.innerHTML = box.hidden ? "" : mailConnect({ bare: true });
+    bindMailConnect(box, async () => { await refreshMe(); badges(); viewSettings(); }, async () => {
+      if (!mailInput.value.trim() && !s.mailSuggestion) { toast("Indique d'abord ton adresse mail."); mailInput.focus(); return false; }
+      return true;
+    });
+  });
+
+  // Couleurs
+  const currentList = () => (window.__me.matieres || []).map((m) => ({ ...m }));
+  main.querySelectorAll("input[type=color]").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      const list = currentList();
+      list[+inp.dataset.i].couleur = inp.value.toUpperCase();
+      saveSettings({ MATIERES: list }).catch(fail);
+    });
+  });
+  $("#colors-reset").addEventListener("click", () => saveSettings({ MATIERES: null }, "Couleurs par défaut remises").then(viewSettings).catch(fail));
+  main.querySelectorAll("[data-motif], [data-nom]").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      const i = +(inp.dataset.motif ?? inp.dataset.nom);
+      const err = $(`[data-err="${i}"]`);
+      const list = currentList();
+      if (inp.dataset.motif !== undefined) {
+        const bad = inp.value.trim() ? validRegex(inp.value) : "motif vide";
+        err.textContent = bad ? `Motif invalide : ${bad}` : "";
+        if (bad) return;
+        list[i].motif = inp.value.trim();
+      } else list[i].nom = inp.value.trim();
+      saveSettings({ MATIERES: list }).catch((e) => { err.textContent = e.message; });
+    });
+  });
+
+  // Affichage
+  main.querySelectorAll("[data-theme]").forEach((b) => b.addEventListener("click", () => {
+    setTheme(b.dataset.theme);
+    main.querySelectorAll("[data-theme]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  }));
+  const hidden = $("#set-hidden");
+  hidden.addEventListener("change", () => {
+    const words = hidden.value.split("\n").map((w) => w.trim()).filter(Boolean);
+    saveSettings({ COURS_MASQUES: words }).catch(fail);
+  });
+
+  // Avancé
+  main.querySelectorAll("[data-cache]").forEach((inp) => inp.addEventListener("change", () => {
+    const v = Math.round(Number(inp.value));
+    if (!Number.isFinite(v) || v < 0 || v > 1440) return toast("Durée entre 0 et 1440 minutes.");
+    saveSettings({ [inp.dataset.cache]: v * 60 }).catch(fail);
+  }));
+  const port = $("#set-port");
+  port.addEventListener("change", () => {
+    const v = Number(port.value);
+    if (!Number.isInteger(v) || v < 1024 || v > 65535) return toast("Le port doit être un nombre entre 1024 et 65535.");
+    saveSettings({ PORT: v }, "Enregistré : pris en compte au prochain lancement").then(viewSettings).catch(fail);
+  });
+
+  // Tout effacer
+  $("#wipe").addEventListener("click", async () => {
+    if (!confirm("Tout effacer de cet ordinateur ?\n\nSession, jetons Moodle et Outlook, lien ADE, couleurs et autres réglages seront supprimés. Il faudra refaire l'assistant.")) return;
+    try {
+      await postJSON("/api/reset", { confirm: true });
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* sans stockage */ }
+      location.hash = "";
+      location.reload();
+    } catch (e) { fail(e); }
   });
 }
 
@@ -1413,11 +1770,14 @@ function start() {
   setStatus("moodle", "idle");
   if (!window.__me.sources.mail) setStatus("mail", "off");
   if (!window.__me.sources.notes) setStatus("notes", "off");
+  if (!window.__me.sources.ade) setStatus("ade", "off");
+  syncTheme();
   route();
   badges();
 }
 
-/* ── Thème : système (par défaut), clair ou sombre. Le bouton fait défiler les trois états. ── */
+/* ── Thème : système (par défaut), clair ou sombre. Enregistré dans les réglages ;
+      localStorage n'en garde qu'une copie pour peindre la page sans flash au chargement. ── */
 const THEME_LABEL = { system: "Thème : système", light: "Thème : clair", dark: "Thème : sombre" };
 const themeQuery = matchMedia("(prefers-color-scheme: dark)");
 function themeMode() {
@@ -1425,26 +1785,33 @@ function themeMode() {
   return "system";
 }
 function applyTheme(mode) {
+  try { if (mode === "system") localStorage.removeItem("theme"); else localStorage.setItem("theme", mode); } catch { /* stockage indisponible */ }
   document.documentElement.dataset.theme = mode === "system" ? (themeQuery.matches ? "dark" : "light") : mode;
   $("#theme-label").textContent = THEME_LABEL[mode];
 }
 function setTheme(mode) {
-  try { if (mode === "system") localStorage.removeItem("theme"); else localStorage.setItem("theme", mode); } catch { /* stockage indisponible */ }
   applyTheme(mode);
+  if ((window.__me || {}).loggedIn) saveSettings({ THEME: mode }, null).catch((e) => toast(e.message));
+}
+function syncTheme() {
+  const t = (window.__me || {}).theme;
+  if (t && t !== themeMode()) applyTheme(t);
 }
 themeQuery.addEventListener("change", () => { if (themeMode() === "system") applyTheme("system"); });
 applyTheme(themeMode());
 $("#theme").addEventListener("click", () => setTheme({ system: "light", light: "dark", dark: "system" }[themeMode()]));
 
-$("#logout").addEventListener("click", async () => {
+async function logout() {
   await fetch("/api/logout", { method: "POST" });
   location.hash = "";
   location.reload();
-});
+}
+$("#logout").addEventListener("click", logout);
 
 (async function init() {
-  window.__me = await fetch("/api/me").then((r) => r.json());
-  if (window.__me.demo) $("#logout").hidden = true;
-  if (!window.__me.loggedIn) return showLogin();
+  await refreshMe();
+  syncTheme();
+  if (window.__me.demo && !window.__me.setup && window.__me.loggedIn) $("#logout").hidden = true;
+  if (!window.__me.loggedIn) return showAuth();
   start();
 })();

@@ -13,6 +13,7 @@ sys.path.insert(0, ROOT)
 
 from sources.common import Session, SourceError  # noqa: E402
 from sources.notes import Notes  # noqa: E402
+from tests.aide import avec_config  # noqa: E402
 
 FIXTURE = os.path.join(ROOT, "tests", "fixtures", "notes_reel_anonyme.json")
 
@@ -90,8 +91,8 @@ class HttpTest(unittest.TestCase):
         threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         self.addCleanup(self.srv.server_close)
         self.addCleanup(self.srv.shutdown)
-        cfg = SimpleNamespace(NOTES_URL=f"http://127.0.0.1:{self.srv.server_port}", UNICA_LOGIN="etu")
-        self.notes = Notes(cfg, Session())
+        avec_config(self, NOTES_URL=f"http://127.0.0.1:{self.srv.server_port}")
+        self.notes = Notes(Session())
 
     def test_connexion_puis_donnees(self):
         self.notes.login("etu", "pw")

@@ -32,14 +32,30 @@ def load_secret(name):
         return None
 
 
-def save_secret(name, data):
-    path = os.path.join(CACHE_DIR, name)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+def ecrire_prive(path, texte):
+    """Écrit un fichier lisible par toi seul (chmod 600), sans jamais laisser de fichier à moitié écrit.
+    Recrée .cache/ s'il a été effacé."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(texte)
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def save_secret(name, data):
+    ecrire_prive(os.path.join(CACHE_DIR, name), json.dumps(data))
 
 
 def delete_secret(name):
@@ -213,6 +229,11 @@ class TTLCache:
             self._data[key] = (now, value)
         return value
 
-    def clear(self):
+    def clear(self, *prefixes):
+        """Vide tout le cache, ou seulement les clés qui commencent par l'un des préfixes."""
         with self._lock:
-            self._data.clear()
+            if not prefixes:
+                self._data.clear()
+                return
+            for key in [k for k in self._data if k.startswith(prefixes)]:
+                del self._data[key]

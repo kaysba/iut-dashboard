@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .common import (Session, SourceError, delete_secret, http_get, http_post_json,
                      http_post_multipart, load_secret, save_secret)
 from .sso import cas_login
-from .defaults import opt
+from .settings import opt
 
 TOKEN_FILE = "moodle_token.json"
 STATUS_FILE = "assign_status.json"
@@ -23,16 +23,22 @@ DENIED_CODES = {"accessexception", "webservice_access_exception", "nofileupload"
 
 
 class Moodle:
-    def __init__(self, cfg, session=None):
+    """Les options (adresse, jeton manuel, cours masqués) sont relues à chaque usage avec opt()."""
+
+    def __init__(self, session=None, login="", password=""):
         self.session = session or Session()
-        self.base = opt(cfg, "MOODLE_URL").rstrip("/")
-        self.login = opt(cfg, "UNICA_LOGIN")
-        self.password = opt(cfg, "UNICA_PASSWORD")
-        self.manual_token = opt(cfg, "MOODLE_TOKEN").strip()
-        self.hidden = [h.lower() for h in opt(cfg, "COURS_MASQUES")]
+        self.login, self.password = login, password
         self._token = None
         self._site = None
         self._calendar_ok = None
+
+    @property
+    def base(self):
+        return opt("MOODLE_URL").rstrip("/")
+
+    @property
+    def manual_token(self):
+        return opt("MOODLE_TOKEN").strip()
 
     def set_credentials(self, login, password):
         self.login, self.password = login, password
@@ -69,7 +75,7 @@ class Moodle:
 
         cas_login(s, self.base + "/login/index.php", self.login, self.password, on_site, follow_link=sso_link,
                   refused="Connexion UniCA refusée : vérifie ton identifiant et ton mot de passe. "
-                          "Si tu as la double authentification, utilise MOODLE_TOKEN dans config.py (voir README).")
+                          "Si tu as la double authentification, utilise MOODLE_TOKEN dans config.py (voir README, « Pour aller plus loin »).")
 
         # Vérification + jeton mobile
         passport = str(random.randint(10**6, 10**9))
@@ -81,9 +87,9 @@ class Moodle:
         if not m:
             if "/login/" in location or "/login/" in url:
                 raise SourceError("Connexion automatique à Moodle impossible (page de login inattendue). "
-                                  "Utilise MOODLE_TOKEN dans config.py (voir README).")
+                                  "Utilise MOODLE_TOKEN dans config.py (voir README, « Pour aller plus loin »).")
             raise SourceError("Moodle n'a pas fourni de jeton : le service mobile est peut-être désactivé. "
-                              "Utilise MOODLE_TOKEN dans config.py (voir README).")
+                              "Utilise MOODLE_TOKEN dans config.py (voir README, « Pour aller plus loin »).")
         decoded = base64.b64decode(m.group(1)).decode("utf-8", "replace")
         parts = decoded.split(":::")
         if len(parts) < 2:
@@ -116,13 +122,23 @@ class Moodle:
             self._site = self.call("core_webservice_get_site_info")
         return self._site
 
+    def profile_mail(self):
+        """Adresse mail du profil Moodle, ou "" si l'université refuse cette fonction à l'app mobile."""
+        try:
+            users = self.call("core_user_get_users_by_field", field="id", values=[self.site()["userid"]])
+        except SourceError:
+            return ""
+        mail = (users[0].get("email") or "") if isinstance(users, list) and users else ""
+        return mail if "@" in mail else ""
+
     def courses(self):
         uid = self.site()["userid"]
         raw = self.call("core_enrol_get_users_courses", userid=uid)
+        hidden = [h.lower() for h in opt("COURS_MASQUES") if h]
         out = []
         for c in raw:
             name = html.unescape(c.get("fullname", ""))
-            if c.get("hidden") or any(h in name.lower() for h in self.hidden):
+            if c.get("hidden") or any(h in name.lower() for h in hidden):
                 continue
             out.append({
                 "id": c["id"], "name": name, "short": html.unescape(c.get("shortname", "")),

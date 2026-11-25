@@ -1,20 +1,22 @@
-"""Valeurs par défaut des options de config.py.
+"""Valeurs par défaut de toutes les options.
 
-Une option absente de config.py prend la valeur d'ici (le dashboard le signale au démarrage).
-Ces valeurs sont les mêmes que dans config-exemple.py : tests/test_config.py le vérifie.
-Dans le code, lire une option avec opt(config, "NOM") et jamais directement config.NOM.
+Ordre de priorité (voir sources/settings.py) : réglages faits dans la page (.cache/settings.json),
+puis config.py s'il existe, puis ces valeurs. Dans le code, lire une option avec opt("NOM").
+Les options de config-exemple.py ont ici la même valeur : tests/test_config.py le vérifie.
 """
-import copy
 
 DEFAULTS = {
-    "PRENOM": "Prénom",
-    "MOODLE_URL": "https://lms.univ-cotedazur.fr/2026",
+    # Réglées dans la page (ou lues dans Moodle) : plus dans config-exemple.py. Un ancien config.py
+    # qui les définit encore sert de valeur de départ.
+    "PRENOM": "",
     "UNICA_LOGIN": "",
-    "UNICA_PASSWORD": "",
+    "ADE_ICAL_URL": "",
+    "MAIL_ADRESSE": "",
+    "THEME": "system",
+    # Options avancées (config-exemple.py)
+    "MOODLE_URL": "https://lms.univ-cotedazur.fr/2026",
     "MOODLE_TOKEN": "",
     "COURS_MASQUES": [],
-    "ADE_ICAL_URL": "",
-    "MAIL_ADRESSE": "prenom.nom@etu.unice.fr",
     "MAIL_NOMBRE": 25,
     "MS_CLIENT_ID": "9e5f94bc-e8a4-4e73-b8be-63364c29d753",
     "MS_TENANT": "organizations",
@@ -51,9 +53,5 @@ DEFAULTS = {
 }
 
 
-def opt(config, name):
-    """Valeur de l'option `name` dans `config`, ou sa valeur par défaut si config.py ne la définit pas."""
-    try:
-        return getattr(config, name)
-    except AttributeError:
-        return copy.deepcopy(DEFAULTS[name])
+# Options qui ne figurent pas dans config-exemple.py (réglées dans la page).
+PAGE_SEULEMENT = ("PRENOM", "UNICA_LOGIN", "ADE_ICAL_URL", "MAIL_ADRESSE", "THEME")

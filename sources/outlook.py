@@ -16,7 +16,7 @@ import time
 import urllib.parse
 
 from .common import SourceError, delete_secret, http_post_json, load_secret, save_secret
-from .defaults import opt
+from .settings import opt
 
 TOKEN_FILE = "outlook_token.json"
 SCOPE = "https://outlook.office.com/IMAP.AccessAsUser.All offline_access"
@@ -24,17 +24,31 @@ IMAP_HOST = "outlook.office365.com"
 
 
 class Outlook:
-    def __init__(self, cfg):
-        self.address = opt(cfg, "MAIL_ADRESSE")
-        self.count = opt(cfg, "MAIL_NOMBRE")
-        self.client_id = opt(cfg, "MS_CLIENT_ID")
-        self.tenant = opt(cfg, "MS_TENANT")
-        self.redirect_uri = opt(cfg, "MS_REDIRECT_URI")
+    """address_fn() donne l'adresse mail à utiliser (réglage de la page, sinon celle lue dans Moodle)."""
+
+    def __init__(self, address_fn=lambda: opt("MAIL_ADRESSE")):
+        self._address_fn = address_fn
         self._pending = None  # (state, verifier, redirect_uri)
 
     @property
+    def address(self):
+        return self._address_fn()
+
+    @property
+    def count(self):
+        return opt("MAIL_NOMBRE")
+
+    @property
+    def client_id(self):
+        return opt("MS_CLIENT_ID")
+
+    @property
+    def redirect_uri(self):
+        return opt("MS_REDIRECT_URI")
+
+    @property
     def authority(self):
-        return f"https://login.microsoftonline.com/{self.tenant}/oauth2/v2.0"
+        return f"https://login.microsoftonline.com/{opt('MS_TENANT')}/oauth2/v2.0"
 
     def connected(self):
         return bool(load_secret(TOKEN_FILE))
@@ -68,6 +82,7 @@ class Outlook:
         self._pending = None
 
     def disconnect(self):
+        self._pending = None
         delete_secret(TOKEN_FILE)
 
     def _store(self, tok):

@@ -1,37 +1,29 @@
 # ─────────────────────────────────────────────────────────────
-#  Configuration du dashboard IUT
-#  Copie ce fichier en « config.py » puis adapte-le :
-#      cp config-exemple.py config.py        (Windows : copy config-exemple.py config.py)
+#  Options avancées du dashboard IUT (FACULTATIF)
+#
+#  Tu n'as PAS besoin de ce fichier : tout se règle dans la page web
+#  (assistant au premier lancement, puis page Réglages).
+#
+#  Ce fichier documente les options avancées. Le dashboard ne le lit pas.
+#  Pour en changer une, crée un fichier config.py à côté de dashboard.py
+#  et recopie-y seulement les lignes voulues. Une option réglée dans la page
+#  passe avant config.py ; une option absente prend sa valeur par défaut.
 #  config.py est dans .gitignore : ne le pousse jamais sur Git.
 # ─────────────────────────────────────────────────────────────
 
-# Ton prénom, affiché en haut du dashboard
-PRENOM = "Prénom"
-
 # ── Moodle ───────────────────────────────────────────────────
 MOODLE_URL = "https://lms.univ-cotedazur.fr/2026"
-
-# Identifiants UniCA : ils sont demandés dans la page web au lancement
-# et restent en mémoire. Laisse ces lignes vides.
-UNICA_LOGIN = ""
-UNICA_PASSWORD = ""
 
 # Plan B si la connexion automatique échoue (double authentification, etc.) :
 # colle ici ton jeton « Moodle mobile web service ».
 # Voir le README, section « Jeton Moodle manuel ».
 MOODLE_TOKEN = ""
 
-# Cours à masquer (mots présents dans le nom, insensible à la casse)
+# Cours à masquer (mots présents dans le nom, insensible à la casse). Aussi dans Réglages > Affichage.
 COURS_MASQUES = []        # ex : ["Espace étudiants", "Bibliothèque"]
 
-# ── Emploi du temps (ADE) ────────────────────────────────────
-# Lien d'export iCal généré depuis ADE (voir README, section « Lien ADE »).
-# Il ressemble à :
-# https://edtweb.univ-cotedazur.fr/jsp/custom/modules/plannings/anonymous_cal.jsp?resources=XXXX&projectId=6&calType=ical&firstDate=...&lastDate=...
-ADE_ICAL_URL = ""
-
 # ── Mails (Outlook / Microsoft 365) ──────────────────────────
-MAIL_ADRESSE = "prenom.nom@etu.unice.fr"
+# L'adresse mail et le lien ADE se règlent dans la page (assistant, puis Réglages).
 MAIL_NOMBRE = 25          # nombre de mails récents à afficher
 
 # Application OAuth utilisée pour se connecter à Outlook.
@@ -50,7 +42,7 @@ NOTES_PDF_TYPE = "short"
 # ── Serveur local ────────────────────────────────────────────
 # Taille maximale (octets) d'un envoi de fichiers depuis le dashboard, quelle que soit la limite du devoir.
 UPLOAD_MAX = 100 * 1024 * 1024
-PORT = 8765
+PORT = 8765               # aussi dans Réglages > Avancé
 OUVRIR_NAVIGATEUR = True
 
 # Durée de cache (secondes) avant de redemander les données
@@ -59,7 +51,7 @@ CACHE_MOODLE = 10 * 60
 CACHE_MAILS = 2 * 60
 CACHE_NOTES = 15 * 60
 
-# ── Couleurs par matière ─────────────────────────────────────
+# ── Couleurs par matière (aussi dans Réglages > Couleurs des matières) ──
 # motif = expression régulière, sans accents ni majuscules, la première qui correspond gagne.
 # Une matière sans motif correspondant prend une couleur de COULEURS_SECOURS.
 MATIERES = [

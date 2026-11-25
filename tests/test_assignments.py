@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sources import moodle as moodle_mod  # noqa: E402
 from sources.common import SourceError  # noqa: E402
+from tests.aide import avec_config  # noqa: E402
 
 NOW = time.time()
 DAY = 86400
@@ -75,9 +76,8 @@ class Fake:
 class AssignmentsTest(unittest.TestCase):
     def setUp(self):
         self.store = {}
-        cfg = SimpleNamespace(MOODLE_URL="https://moodle.test", UNICA_LOGIN="", UNICA_PASSWORD="",
-                              MOODLE_TOKEN="t", COURS_MASQUES=[])
-        self.m = moodle_mod.Moodle(cfg)
+        avec_config(self, MOODLE_URL="https://moodle.test", MOODLE_TOKEN="t", COURS_MASQUES=[])
+        self.m = moodle_mod.Moodle()
         for name, fn in (("load_secret", self.store.get),
                          ("save_secret", self.store.__setitem__)):
             p = mock.patch.object(moodle_mod, name, fn)

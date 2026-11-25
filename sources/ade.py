@@ -1,10 +1,15 @@
 """Emploi du temps ADE via l'export iCal."""
 import datetime as dt
 import re
+import urllib.error
 import urllib.parse
 
 from .common import SourceError, http_get
-from .defaults import opt
+from .settings import opt
+
+NOT_SET = "ADE_NOT_SET"
+MSG_CONSULTATION = "Ce lien sert à consulter ADE, pas à l'exporter. Utilise « Exporter l'agenda »."
+MSG_PAS_EDT = "Ce lien ne renvoie pas d'emploi du temps."
 
 TYPE_RULES = [
     ("Examen", r"\b(examen|exam|ds|cc|partiel|contr[ôo]le|soutenance|évaluation)\b"),
@@ -16,19 +21,15 @@ TYPE_RULES = [
 
 
 class ADE:
-    def __init__(self, cfg):
-        self.url = opt(cfg, "ADE_ICAL_URL").strip()
+    """Le lien est relu à chaque appel : un changement dans Réglages s'applique tout de suite."""
 
-    def events(self, start: dt.date, end: dt.date):
-        if not self.url:
-            raise SourceError("Ajoute ADE_ICAL_URL dans config.py (voir README, section « Lien ADE »).")
-        url = _with_dates(self.url, start, end)
-        try:
-            raw = http_get(url, timeout=30).decode("utf-8", errors="replace")
-        except Exception as e:
-            raise SourceError(f"ADE injoignable : {e}")
+    def events(self, start: dt.date, end: dt.date, url=None):
+        url = (url if url is not None else opt("ADE_ICAL_URL")).strip()
+        if not url:
+            raise SourceError(NOT_SET)
+        raw = _download(_with_dates(url, start, end))
         if "BEGIN:VCALENDAR" not in raw:
-            raise SourceError("Le lien ADE ne renvoie pas un calendrier iCal. Régénère-le depuis ADE.")
+            raise SourceError("Le lien ADE ne renvoie plus d'emploi du temps. Change-le dans Réglages.")
         events = []
         for ev in parse_ics(raw):
             if not ev.get("start"):
@@ -38,6 +39,30 @@ class ADE:
             events.append(ev)
         events.sort(key=lambda e: e["start"])
         return [_serialize(e) for e in events]
+
+    def tester(self, url, today=None):
+        """Vérifie un lien collé dans la page : renvoie le nombre de cours de la semaine en cours.
+        Lève SourceError avec un message clair si ce n'est pas un lien d'export."""
+        url = url.strip()
+        if "direct/index.jsp" in url:
+            raise SourceError(MSG_CONSULTATION)
+        today = today or dt.date.today()
+        lundi = today - dt.timedelta(days=today.weekday())
+        dimanche = lundi + dt.timedelta(days=6)
+        raw = _download(_with_dates(url, lundi, dimanche))
+        if "BEGIN:VCALENDAR" not in raw:
+            raise SourceError(MSG_PAS_EDT)
+        return sum(1 for ev in parse_ics(raw) if ev.get("start") and lundi <= ev["start"].date() <= dimanche)
+
+
+def _download(url):
+    try:
+        return http_get(url, timeout=30).decode("utf-8", errors="replace")
+    except urllib.error.HTTPError:
+        return ""   # page d'erreur d'ADE : l'appelant dit « pas d'emploi du temps »
+    except Exception as e:
+        # Le message ne reprend jamais l'adresse : elle contient un jeton personnel.
+        raise SourceError(f"ADE injoignable : {getattr(e, 'reason', None) or type(e).__name__}")
 
 
 def _with_dates(url, start, end):

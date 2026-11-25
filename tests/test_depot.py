@@ -19,6 +19,7 @@ sys.path.insert(0, ROOT)
 from sources import common, moodle as moodle_mod  # noqa: E402
 from sources.common import SourceError, encode_multipart, parse_multipart  # noqa: E402
 from sources.moodle import DENIED, Moodle, verifier_envoi  # noqa: E402
+from tests.aide import avec_config  # noqa: E402
 
 NOW = int(time.time())
 
@@ -98,8 +99,8 @@ class DepotBase(unittest.TestCase):
         self.addCleanup(self.srv.shutdown)
         base = f"http://127.0.0.1:{self.srv.server_port}"
         self.base = base
-        self.m = Moodle(SimpleNamespace(MOODLE_URL=base, UNICA_LOGIN="", UNICA_PASSWORD="", MOODLE_TOKEN="tok",
-                                        COURS_MASQUES=[]))
+        avec_config(self, MOODLE_URL=base, MOODLE_TOKEN="tok", COURS_MASQUES=[])
+        self.m = Moodle()
 
     def status(self):
         files = [{"filename": n, "filesize": len(self.S["site_files"].get(n, b"")),

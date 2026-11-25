@@ -9,6 +9,7 @@ from types import SimpleNamespace
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+from sources import settings  # noqa: E402
 from sources.common import SourceError  # noqa: E402
 from sources.notes import Notes, _num, _releve, normaliser_releve  # noqa: E402
 
@@ -54,9 +55,21 @@ class FakeSession:
                 for u in self.calls]
 
 
+_ANCIENNE_CONFIG = []
+
+
+def setUpModule():
+    _ANCIENNE_CONFIG.append(settings.config_actuelle())
+    settings.utiliser_config(SimpleNamespace(NOTES_URL=BASE))
+
+
+def tearDownModule():
+    settings.utiliser_config(_ANCIENNE_CONFIG.pop())
+
+
 def make_notes(answers, logged=True, password="secret"):
-    cfg = SimpleNamespace(NOTES_URL=BASE, UNICA_LOGIN="etu")
-    n = Notes(cfg, FakeSession(answers, logged))
+    n = Notes(FakeSession(answers, logged))
+    n._login = "etu"
     n._password = password
     return n
 
