@@ -1,149 +1,17 @@
-/* Dashboard IUT : interface. Vanilla JS, aucune dépendance. */
-"use strict";
-
-// Un créneau est un DS si son titre contient « DS » (avec numéro éventuel) comme mot entier : pas ADS, DSI, Deds.
-const DS_RE = /(^|[\s\-–(])DS\d*(?=$|[\s\-–:)])/i;
-
-const $ = (s, el = document) => el.querySelector(s);
-const main = $("#main");
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-const ICON = {
-  close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
-  ext: '<svg viewBox="0 0 24 24"><path d="M13.5 5.5H18.5V10.5M18 6l-7.5 7.5M16 13.5V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V9.5A1.5 1.5 0 0 1 6 8h4.5"/></svg>',
-  dl: '<svg viewBox="0 0 24 24"><path d="M12 4.5v10M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>',
-  clip: '<svg viewBox="0 0 24 24"><path d="m19 11.5-6.8 6.8a4.2 4.2 0 0 1-6-6l7.2-7.1a2.8 2.8 0 0 1 4 4l-7.1 7.1a1.4 1.4 0 0 1-2-2l6.4-6.4"/></svg>',
-  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>',
-  left: '<svg viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></svg>',
-  right: '<svg viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></svg>',
-  link: '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
-  folder: '<svg viewBox="0 0 24 24"><path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v8.3A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/></svg>',
-  page: '<svg viewBox="0 0 24 24"><path d="M7 3.5h7l4.5 4.5v12.5H7z"/><path d="M13.5 3.5V8.5H18.5M10 12.5h5.5M10 16h5.5"/></svg>',
-  assign: '<svg viewBox="0 0 24 24"><path d="M12 15V4.5M7.5 9 12 4.5 16.5 9M5 15.5v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></svg>',
-  quiz: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M9.8 9.6a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.5v.4M12 16.6v.1"/></svg>',
-  forum: '<svg viewBox="0 0 24 24"><path d="M5 5.5h11a1.5 1.5 0 0 1 1.5 1.5v6.5A1.5 1.5 0 0 1 16 15H10l-4 3.5V15H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5z"/></svg>',
-  trophy: '<svg viewBox="0 0 24 24"><path d="M8 4.5h8v5a4 4 0 0 1-8 0zM8 6.5H5v1.5a3 3 0 0 0 3 3M16 6.5h3v1.5a3 3 0 0 1-3 3M12 13.5v3.5M8.5 19.5h7M10 17h4"/></svg>',
-  medal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="14.5" r="4.5"/><path d="m9 10.2-2.5-6h4l1.5 3M15 10.2l2.5-6h-4L12 7.5"/></svg>',
-  video: '<svg viewBox="0 0 24 24"><rect x="3.5" y="6" width="12" height="12" rx="2"/><path d="m15.5 10.5 5-3v9l-5-3"/></svg>',
-};
-
-/* ── Dates ─────────────────────────────────────────────── */
-const DAY = 86400000;
-const fr = (opts) => new Intl.DateTimeFormat("fr-FR", opts);
-const fWeekday = fr({ weekday: "long" });
-const fDayMonth = fr({ day: "numeric", month: "long" });
-const fShortMonth = fr({ month: "short" });
-const fDate = fr({ day: "numeric", month: "short" });
-const hm = (d) => `${d.getHours()}h${String(d.getMinutes()).padStart(2, "0")}`;
-const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-const monday = (d) => addDays(startOfDay(d), -((d.getDay() + 6) % 7));
-const sameDay = (a, b) => a.toDateString() === b.toDateString();
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-const longDay = (d) => cap(`${fWeekday.format(d)} ${fDayMonth.format(d)}`);
-
-function relDay(d) {
-  const diff = Math.round((startOfDay(d) - startOfDay(new Date())) / DAY);
-  if (diff === 0) return "aujourd'hui";
-  if (diff === 1) return "demain";
-  if (diff === -1) return "hier";
-  if (diff > 1 && diff < 7) return fWeekday.format(d);
-  return fDate.format(d);
-}
-
-function countdown(ts) {
-  const due = new Date(ts * 1000);
-  const ms = due - Date.now();
-  const abs = Math.abs(ms);
-  const h = Math.floor(abs / 3600000);
-  const m = Math.floor(abs / 60000);
-  if (ms < 0) {
-    if (h < 1) return `en retard de ${m} min`;
-    if (h < 48) return `en retard de ${h} h`;
-    return `en retard de ${Math.floor(h / 24)} jours`;
-  }
-  if (m < 60) return `dans ${m} min`;
-  if (h < 24 && sameDay(due, new Date())) return `aujourd'hui à ${hm(due)}`;
-  if (relDay(due) === "demain") return `demain à ${hm(due)}`;
-  if (h < 24 * 7) return `${fWeekday.format(due)} à ${hm(due)}`;
-  return `dans ${Math.round(h / 24)} jours`;
-}
-
-function ago(ts) {
-  const d = new Date(ts * 1000);
-  if (sameDay(d, new Date())) return hm(d);
-  if (relDay(d) === "hier") return "hier";
-  return fDate.format(d);
-}
-
-/* ── API ───────────────────────────────────────────────── */
-const store = {};
-const status = { moodle: "idle", ade: "idle", notes: "idle", mail: "idle" };
-let forceNext = false;
-
-async function api(path, { maxAge = 300000, source } = {}) {
-  const hit = store[path];
-  if (!forceNext && hit && Date.now() - hit.t < maxAge) return hit.p;
-  const sep = path.includes("?") ? "&" : "?";
-  const p = fetch(path + (forceNext ? `${sep}refresh=1` : ""))
-    .then(async (r) => {
-      const data = await r.json().catch(() => ({ error: `Réponse illisible (HTTP ${r.status})` }));
-      if (!r.ok || data.error) {
-        const e = new Error(data.error || `HTTP ${r.status}`);
-        e.code = data.code;
-        throw e;
-      }
-      if (source) setStatus(source, "ok");
-      return data;
-    })
-    .catch((e) => {
-      delete store[path];
-      if (e.code === "login_required") { showAuth("Ta session a expiré. Reconnecte-toi."); throw e; }
-      const off = ["mail_not_connected", "notes_login_required", "ade_not_set"].includes(e.code);
-      if (source) setStatus(source, off ? "off" : "err", e.message);
-      throw e;
-    });
-  store[path] = { t: Date.now(), p };
-  if (source) setStatus(source, "wait");
-  return p;
-}
-
-function setStatus(src, s, msg) {
-  status[src] = s;
-  const labels = { moodle: "Moodle", ade: "Emploi du temps", notes: "Notes", mail: "Outlook" };
-  const text = { ok: "connecté", err: "erreur", wait: "…", off: "non connecté", idle: "" };
-  $("#sources").innerHTML = Object.keys(labels).map((k) => {
-    const st = status[k];
-    const cls = st === "ok" ? "ok" : st === "err" ? "err" : st === "wait" ? "wait" : "";
-    return `<li title="${esc(k === src && msg ? msg : "")}"><i class="dot ${cls}"></i>${labels[k]}<span>${text[st]}</span></li>`;
-  }).join("");
-}
-
-function errorBox(e, what) {
-  if (e.code === "ade_not_set") {
-    return `<div class="empty">Ton emploi du temps n'est pas encore relié au dashboard.
-      <a class="linkish" href="#/reglages">Ajouter mon lien ADE dans les réglages</a></div>`;
-  }
-  return `<div class="err"><b>${esc(what)} indisponible</b>${esc(e.message)}</div>`;
-}
-
-const skel = (n = 3) => Array.from({ length: n }, (_, i) => `<div class="skel" style="width:${92 - i * 14}%"></div>`).join("");
-
-function toast(msg) {
-  const t = $("#toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => t.classList.remove("show"), 2400);
-}
-
-/* ── Données communes ──────────────────────────────────── */
-const planning = (start, end) => api(`/api/planning?start=${iso(start)}&end=${iso(end)}`, { source: "ade" })
-  .then((d) => d.events.map((e) => ({ ...e, s: new Date(e.start), e: new Date(e.end) })));
-const assignments = () => api("/api/assignments", { source: "moodle" }).then((d) => d.assignments);
-const mailsData = () => api("/api/mails", { source: "mail", maxAge: 120000 });
-const resources = () => api("/api/resources", { source: "moodle", maxAge: 300000 }).then((d) => d.courses);
+/* Dashboard IUT : interface. Modules ES natifs, aucune dépendance. */
+import { $, main, esc, ICON } from "./core/dom.js";
+import { DAY, fWeekday, fDayMonth, fDate, hm, startOfDay, addDays, monday, sameDay, cap, longDay, relDay, countdown } from "./core/dates.js";
+import { store, setForceNext, api, setStatus, errorBox, skel, toast, planning, assignments, mailsData, resources, postJSON, refreshMe, dropStore, saveSettings, logout } from "./core/api.js";
+import { state } from "./core/state.js";
+import { on } from "./core/events.js";
+import { subjectOf, subjStyle, subjTag } from "./core/subjects.js";
+import { openModal, confirmModal } from "./core/modal.js";
+import { themeMode, setTheme, syncTheme, initTheme } from "./core/theme.js";
+import { evMeta, strip, slots } from "./components/strip.js";
+import { rankPill } from "./components/rank.js";
+import { depotStore, knownFiles, disableDepot, rememberFiles, dueRow } from "./components/due.js";
+import { renderDS } from "./components/ds.js";
+import { mailRow, installMailClicks, mailConnect, bindMailConnect } from "./components/mail.js";
 
 function badges() {
   assignments().then((list) => {
@@ -151,7 +19,7 @@ function badges() {
     const n = list.filter((a) => a.status !== "rendu" && a.due && a.due < now + 7 * 86400).length;
     $("#nav-devoirs").textContent = n || "";
   }).catch(() => {});
-  if (window.__me.sources.notes) {
+  if (state.me.sources.notes) {
     notesData().then((d) => {
       const n = d.releve.publie ? newEvals(d.releve).size : 0;
       if (location.hash !== "#/notes") $("#nav-notes").textContent = n || "";
@@ -164,108 +32,8 @@ function badges() {
   }).catch(() => {});
 }
 
-/* ── Couleurs par matière ──────────────────────────────── */
-// Matières et couleurs de secours viennent de config.py (via /api/me), premier motif qui correspond : l'ordre compte.
-const DEFAULT_FALLBACK = "#8A94A3";
-let subjectCache = { me: null, list: [], fallback: [DEFAULT_FALLBACK] };
-function subjectConfig() {
-  const me = window.__me || {};
-  if (subjectCache.me !== me) {
-    const list = [];
-    for (const m of me.matieres || []) {
-      try { list.push({ re: new RegExp(m.motif), name: m.nom, color: m.couleur }); }
-      catch (e) { console.error(`Motif de matière invalide « ${m.motif} » :`, e.message); }
-    }
-    const fallback = (me.couleursSecours || []).length ? me.couleursSecours : [DEFAULT_FALLBACK];
-    subjectCache = { me, list, fallback };
-  }
-  return subjectCache;
-}
-const norm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-function subjectOf(...texts) {
-  const { list, fallback } = subjectConfig();
-  const t = norm(texts.join(" "));
-  const hit = list.find((x) => x.re.test(t));
-  if (hit) return hit;
-  const code = (t.match(/\br\d\.\d+/) || [t])[0];
-  let h = 0;
-  for (const c of code) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return { name: "", color: fallback[h % fallback.length] };
-}
-const subjStyle = (sub) => `--sc:${sub.color}`;
-const subjTag = (sub, label) => `<span class="tag subj" style="${subjStyle(sub)}">${esc(label || sub.name)}</span>`;
-
-/* ── Composants ────────────────────────────────────────── */
-function evMeta(ev) {
-  return [ev.room, ev.teacher].filter(Boolean).join(", ");
-}
-
-function strip(events, day) {
-  const now = new Date();
-  let from = 8, to = 19;
-  events.forEach((e) => {
-    from = Math.min(from, e.s.getHours());
-    to = Math.max(to, e.e.getHours() + (e.e.getMinutes() ? 1 : 0));
-  });
-  const span = (to - from) * 60;
-  const pos = (d) => ((d.getHours() - from) * 60 + d.getMinutes()) / span * 100;
-  const grid = Array.from({ length: to - from }, () => "<i></i>").join("");
-  const nowH = now.getHours() + now.getMinutes() / 60;
-  const showNow = sameDay(day, now) && nowH >= from && nowH < to;
-  const hours = Array.from({ length: to - from + 1 }, (_, i) => (i % 2 === 0 || to - from <= 8) && !(showNow && Math.abs(from + i - nowH) < 0.75)
-    ? `<span style="left:${(i / (to - from)) * 100}%">${from + i}h</span>` : "").join("");
-  const evs = events.map((e) => {
-    const past = e.e < now, live = e.s <= now && now < e.e;
-    return `<div class="strip-ev subj${past ? " past" : ""}${live ? " now" : ""}"
-      style="${subjStyle(subjectOf(e.title))};left:calc(${pos(e.s)}% + 2px);width:calc(${pos(e.e) - pos(e.s)}% - 4px)"
-      title="${esc(`${e.title}\n${hm(e.s)} – ${hm(e.e)}\n${evMeta(e)}`)}">
-      <span class="ti">${esc(e.title)}</span><span class="me">${hm(e.s)}, ${esc(e.room || "salle ?")}</span>${e.teacher ? `<span class="me">${esc(e.teacher)}</span>` : ""}</div>`;
-  }).join("");
-  const line = showNow ? `<div class="now-line" style="left:${pos(now)}%"><span>${hm(now)}</span></div>` : "";
-  return `<div class="strip"><div class="strip-grid">${grid}</div>${evs}${line}</div><div class="hours">${hours}</div>`;
-}
-
-function slots(events) {
-  const now = new Date();
-  return events.map((e) => `<div class="slot${e.e < now ? " past" : ""}">
-    <time>${hm(e.s)} – ${hm(e.e)}</time>
-    <div><div class="ti">${esc(e.title)}</div><div class="me">${esc(evMeta(e) || "Salle non indiquée")}</div></div>
-    <span class="tags"><span class="tag subj" style="${subjStyle(subjectOf(e.title))}">${e.type === "Autre" ? "Cours" : e.type}</span></span></div>`).join("");
-}
-
-function dueRow(a) {
-  const now = Date.now() / 1000;
-  const done = a.status === "rendu";
-  const late = !done && a.due && a.due < now;
-  const soon = !done && a.due && a.due >= now && a.due < now + 3 * 86400;
-  const d = a.due ? new Date(a.due * 1000) : null;
-  const stateTag = done ? '<span class="tag s-done">Rendu</span>'
-    : late ? '<span class="tag s-late">En retard</span>'
-    : a.status === "brouillon" ? '<span class="tag s-draft">Brouillon</span>'
-    : soon ? '<span class="tag s-soon">Bientôt</span>' : "";
-  const when = !d ? "pas de date limite" : done ? `date limite : ${fDate.format(d)}` : countdown(a.due);
-  depotStore[a.id] = a;
-  rememberFiles(a);
-  const hot = late || soon ? " hot" : "";
-  const action = done
-    ? `<a class="btn ghost" href="${esc(a.url)}" target="_blank" rel="noopener">Voir le dépôt</a>`
-    : canDeposit(a) ? `<button class="btn${hot}" type="button" data-depot="${a.id}">${ICON.assign}Déposer</button>`
-    : `<a class="btn${hot}" href="${esc(a.submitUrl)}" target="_blank" rel="noopener">${ICON.assign}Déposer</a>`;
-  const closed = !done && a.depot && a.depot.fichiers && !a.depot.ouvert ? `<span class="due-closed">${esc(a.depot.raison_fermeture)}</span>` : "";
-  return `<div class="due${done ? " done" : late ? " late" : soon ? " soon" : ""}">
-    <div class="due-date">${d ? `<b>${d.getDate()}</b><span>${esc(fShortMonth.format(d))}</span>` : "<b>–</b>"}</div>
-    <div><a class="due-name" href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.name)}</a>
-      <div class="due-meta">${subjTag(subjectOf(a.course, a.courseShort), a.courseShort || a.course)}<span>${esc(when)}</span>${stateTag}${closed}</div></div>
-    <div class="due-act">${action}</div></div>`;
-}
 
 /* ── Dépôt de fichiers ─────────────────────────────────── */
-const depotStore = {};            // id du devoir -> devoir (pour le panneau)
-const knownFiles = new Map();     // nom de fichier (minuscules) -> devoir où il a déjà été rendu (cette session)
-let depotOff = false;             // le Moodle de l'IUT refuse le dépôt externe : on masque pour la session
-try { depotOff = sessionStorage.getItem("depotOff") === "1"; } catch { /* sans stockage */ }
-
-const canDeposit = (a) => !depotOff && a.depot && a.depot.fichiers && a.depot.ouvert;
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(n >= 10485760 ? 0 : 1).replace(".", ",")} Mo`
   : n >= 1024 ? `${Math.round(n / 1024)} Ko` : `${n} o`);
 const extOf = (name) => ((name.match(/\.([^.]+)$/) || [])[1] || "").toLowerCase();
@@ -273,10 +41,6 @@ const fmtWhen = (ms) => { const d = new Date(ms); return `${fDate.format(d)} à 
 const plural = (n, w) => `${n} ${w}${n > 1 ? "s" : ""}`;
 const typeLabel = (name) => (extOf(name) ? `.${extOf(name)}` : "fichier");
 
-function rememberFiles(a) {
-  const d = a.depot;
-  if (d && d.statut === "remis") d.fichiers_actuels.forEach((f) => knownFiles.set(f.nom.toLowerCase(), { id: a.id, name: a.name }));
-}
 
 function constraints(d) {
   const parts = [`${plural(d.max_fichiers, "fichier")} max`];
@@ -350,40 +114,23 @@ function openDepot(id) {
   if (!a || $("#depot-modal")) return;
   const st = { a, depot: a.depot, staged: [], garder: true, view: "form", busy: false, msg: "", errs: [], dirty: false,
     verifie: false, decl: false, opener: document.activeElement, result: null, sent: [] };
-  const back = document.createElement("div");
-  back.className = "modal-back";
-  back.id = "depot-modal";
-  back.innerHTML = '<div class="modal dp" role="dialog" aria-modal="true" aria-labelledby="dp-title"></div>';
-  document.body.appendChild(back);
-  document.body.classList.add("modal-open");
-  const box = $(".dp", back);
-  st.box = box;
-  const focusables = () => [...box.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), [tabindex="0"]')].filter((e) => e.offsetParent !== null);
-
-  const close = () => {
-    clearInterval(st.timer);
-    back.remove();
-    document.body.classList.remove("modal-open");
-    document.removeEventListener("keydown", onKey, true);
-    if (st.opener && st.opener.focus) st.opener.focus();
-    if (st.dirty) { delete store["/api/assignments"]; route(); badges(); }
-  };
-  const onKey = (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault(); e.stopPropagation();
+  const { box, close } = openModal({
+    id: "depot-modal",
+    className: "dp",
+    labelledBy: "dp-title",
+    opener: st.opener,
+    // Pas de fermeture pendant un envoi ; Échap revient au formulaire depuis l'écran rouge.
+    onEscape: (shut) => {
       if (st.busy) return;
-      if (st.view === "review") { st.view = "form"; render("[data-act=review]"); } else close();
-    } else if (e.key === "Tab") {
-      const f = focusables();
-      if (!f.length) return;
-      const first = f[0], last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-      else if (!box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
-    }
-  };
-  document.addEventListener("keydown", onKey, true);
-  back.addEventListener("mousedown", (e) => { if (e.target === back && !st.busy && st.view === "form") close(); });
+      if (st.view === "review") { st.view = "form"; render("[data-act=review]"); } else shut();
+    },
+    onBackdrop: (shut) => { if (!st.busy && st.view === "form") shut(); },
+    onClose: () => {
+      clearInterval(st.timer);
+      if (st.dirty) { delete store["/api/assignments"]; route(); badges(); }
+    },
+  });
+  st.box = box;
 
   const head = () => {
     const d = new Date(a.due * 1000);
@@ -556,8 +303,7 @@ function openDepot(id) {
       st.busy = false;
       if (e.code === "login_required") { close(); showLogin("Ta session a expiré. Reconnecte-toi."); return; }
       if (e.code === "depot_refuse") {
-        depotOff = true;
-        try { sessionStorage.setItem("depotOff", "1"); } catch { /* sans stockage */ }
+        disableDepot();
         st.dirty = true;
         st.view = "form";
         st.errs = [e.message];
@@ -668,153 +414,12 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest?.("[data-depot]");
   if (b) openDepot(+b.dataset.depot);
 });
-
-const mailStore = [];
-function mailRow(m) {
-  const i = mailStore.push(m) - 1;
-  return `<button type="button" class="mail${m.unread ? " unread" : ""}" data-mail="${i}">
-    <i class="ud"></i><span class="mail-from">${esc(m.from)}</span><span class="mail-time">${esc(ago(m.date))}</span>
-    <span class="mail-subj">${esc(m.subject)}${m.attachment ? ICON.clip : ""}</span>
-    <span class="mail-snip">${esc(m.snippet)}</span></button>`;
-}
-
-function openMail(m) {
-  closeMail();
-  const url = esc(window.__webmail || "https://outlook.office.com/mail/inbox");
-  const d = m.date ? new Date(m.date * 1000) : null;
-  const el = document.createElement("div");
-  el.className = "modal-back";
-  el.id = "mail-modal";
-  el.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mail-title">
-    <header class="modal-head">
-      <div><h2 id="mail-title">${esc(m.subject)}</h2>
-        <p><b>${esc(m.from)}</b>${m.fromAddr && m.fromAddr !== m.from ? ` &lt;${esc(m.fromAddr)}&gt;` : ""}${d ? ` · ${esc(fDate.format(d))}, ${hm(d)}` : ""}${m.attachment ? " · pièce jointe" : ""}</p></div>
-      <a class="btn icon" href="${url}" target="_blank" rel="noopener" title="Ouvrir sur Outlook" aria-label="Ouvrir sur Outlook">${ICON.ext}</a>
-      <button class="btn icon" type="button" id="mail-close" aria-label="Fermer">${ICON.close}</button>
-    </header>
-    <div class="modal-body">${esc(m.body || m.snippet || "(message vide)")}</div></div>`;
-  el.addEventListener("click", (ev) => { if (ev.target === el) closeMail(); });
-  document.body.appendChild(el);
-  $("#mail-close", el).addEventListener("click", closeMail);
-  $("#mail-close", el).focus();
-  document.body.classList.add("modal-open");
-}
-function closeMail() {
-  $("#mail-modal")?.remove();
-  document.body.classList.remove("modal-open");
-}
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMail(); });
-document.addEventListener("click", (e) => {
-  const b = e.target.closest?.("[data-mail]");
-  if (b) openMail(mailStore[+b.dataset.mail]);
-});
-
-function mailConnect({ bare = false } = {}) {
-  return `<div class="${bare ? "connect bare" : "panel connect"}">
-    ${bare ? "" : "<h2>Connecter ta boîte Outlook</h2>"}
-    <p>Microsoft demande une connexion unique. Elle se renouvelle ensuite toute seule.</p>
-    <ol>
-      <li>Clique sur <b>Ouvrir la connexion Microsoft</b> et connecte-toi dans le nouvel onglet.</li>
-      <li>À la fin, cet onglet affiche <b>« La connexion a échoué »</b> (adresse <code>localhost</code>). C'est normal : la connexion a réussi.</li>
-      <li>Dans cet onglet, clique dans la barre d'adresse, fais <b>Ctrl+A</b> puis <b>Ctrl+C</b>. Reviens ici et colle avec <b>Ctrl+V</b> dans le champ ci-dessous.</li>
-    </ol>
-    <form id="mail-form">
-      <button class="btn primary" type="button" id="mail-login">Ouvrir la connexion Microsoft</button>
-      <input name="url" placeholder="Colle ici l'adresse copiée (https://localhost/?code=…)" aria-label="Adresse copiée" autocomplete="off">
-      <button class="btn" type="submit">Valider</button>
-    </form></div>`;
-}
-
-function bindMailConnect(root, after, before) {
-  const login = $("#mail-login", root);
-  if (!login) return;
-  const form = $("#mail-form", root);
-  const input = form.url;
-  login.addEventListener("click", async () => {
-    if (before && (await before()) === false) return;
-    const r = await fetch("/api/mail/auth-url").then((x) => x.json());
-    if (r.error) return toast(r.error);
-    window.open(r.url, "_blank", "noopener");
-    input.focus();
-  });
-  let busy = false;
-  const submit = async () => {
-    const url = input.value.trim();
-    if (!url || busy) return;
-    busy = true;
-    try {
-      const r = await fetch("/api/mail/finish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
-      const data = await r.json();
-      if (data.error) return toast(data.error);
-      toast("Outlook connecté");
-      delete store["/api/mails"];
-      after();
-    } finally { busy = false; }
-  };
-  form.addEventListener("submit", (ev) => { ev.preventDefault(); submit(); });
-  input.addEventListener("paste", () => setTimeout(() => { if (/[?&]code=/.test(input.value)) submit(); }, 0));
-}
-
-/* ── DS à venir (page d'accueil) ───────────────────────── */
-const isDS = (titre) => DS_RE.test(String(titre || ""));
-
-// « DS - R3.06 Réseaux » -> « R3.06 Réseaux » ; le numéro est gardé : « DS2 - R3.05 Prog » -> « R3.05 Prog (DS2) ».
-function dsTitle(titre) {
-  const m = DS_RE.exec(titre);
-  if (!m) return titre;
-  const num = (m[0].match(/\d+/) || [""])[0];
-  const clean = titre.replace(DS_RE, (_, pre) => pre).replace(/\s{2,}/g, " ").replace(/^[\s\-–:]+|[\s\-–:]+$/g, "");
-  return clean ? (num ? `${clean} (DS${num})` : clean) : titre;
-}
-
-// DS en cours ou à venir, sans doublons (ADE renvoie parfois un créneau par groupe), du plus proche au plus lointain.
-function upcomingDS(evs, now = new Date()) {
-  const seen = new Set();
-  return evs.filter((e) => isDS(e.title) && e.e > now)
-    .sort((a, b) => a.s - b.s)
-    .filter((e) => { const k = `${e.title.trim().toLowerCase()}|${e.start}`; if (seen.has(k)) return false; seen.add(k); return true; });
-}
-
-const courseCode = (titre) => ((titre.match(/\b[RS]\d\.\d{2}\b/i) || [])[0] || "").toUpperCase();
-function courseFor(courses, titre) {
-  const code = courseCode(titre);
-  if (!code) return null;
-  return courses.find((c) => (c.short || "").toUpperCase() === code)
-    || courses.find((c) => (c.name.match(/\b[RS]\d\.\d{2}\b/i) || [""])[0].toUpperCase() === code) || null;
-}
-
-function dsRow(e, courses) {
-  const now = new Date();
-  const days = Math.round((startOfDay(e.s) - startOfDay(now)) / DAY);
-  const live = e.s <= now && now < e.e;
-  const urg = days <= 1 ? " late" : days <= 7 ? " soon" : "";
-  const title = dsTitle(e.title);
-  const when = live ? `En cours, jusqu'à ${hm(e.e)}` : days === 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} jours`;
-  const course = courseFor(courses, e.title);
-  const annales = course ? `<a class="btn ghost ds-annales" href="#/ressources?cours=${encodeURIComponent(course.short || courseCode(e.title))}&cat=Examen">Annales</a>` : "";
-  return `<div class="due ds${urg}">
-    <div class="due-date"><b>${e.s.getDate()}</b><span>${esc(fShortMonth.format(e.s))}</span></div>
-    <div><div class="due-name">${esc(title)}</div>
-      <div class="due-meta">${subjTag(subjectOf(title), courseCode(title) || subjectOf(title).name)}<span>${hm(e.s)} – ${hm(e.e)}</span>${e.room ? `<span>${esc(e.room)}</span>` : ""}</div></div>
-    <div class="due-act"><span class="ds-when">${esc(when)}</span>${annales}</div></div>`;
-}
-
-function renderDS(evs) {
-  const all = upcomingDS(evs);
-  const title = `DS à venir${all.length > 3 ? ` · ${all.length}` : ""}`;
-  const head = `<div class="h2"><h2>${title}</h2><a href="#/planning">Planning</a></div>`;
-  const box = $("#home-ds");
-  if (!box) return;
-  if (!all.length) { box.innerHTML = head + '<div class="empty">Aucun DS prévu dans les deux prochains mois.</div>'; return; }
-  const draw = (courses) => { const b = $("#home-ds"); if (b) b.innerHTML = head + `<div class="due-list">${all.slice(0, 3).map((e) => dsRow(e, courses)).join("")}</div>`; };
-  draw([]);
-  resources().then(draw).catch(() => {});   // le bouton « Annales » apparaît si un cours correspond ; sans Moodle, il n'y en a pas
-}
+installMailClicks();
 
 /* ── Vue : Aujourd'hui ─────────────────────────────────── */
 async function viewHome() {
   const today = startOfDay(new Date());
-  const me = window.__me;
+  const me = state.me;
   main.innerHTML = `<div class="home-grid">
     <header class="head">
       <div><h1>Bonjour${me.prenom ? ` ${esc(me.prenom)}` : ""}</h1><p id="next">${longDay(today)}</p></div>
@@ -864,7 +469,7 @@ async function viewHome() {
   }).catch((e) => { $("#home-due").innerHTML = errorBox(e, "Moodle"); });
 
   mailsData().then((m) => {
-    window.__webmail = m.webmail;
+    state.webmail = m.webmail;
     $("#home-mail").innerHTML = m.messages.length ? `<div class="mail-list">${m.messages.slice(0, 6).map(mailRow).join("")}</div>`
       : '<div class="empty">Boîte de réception vide.</div>';
   }).catch((e) => {
@@ -1102,16 +707,7 @@ const fmt = (v, d = 2) => (v == null ? "–" : v.toFixed(d).replace(".", ","));
 const fmtInt = (v) => (Number.isInteger(v) ? String(v) : fmt(v, 1));
 // ≥ 10 normal, de 8 à 10 orange, < 8 rouge (une UE sous 8 ne se compense pas en BUT).
 const gradeCls = (v) => (v == null ? "g-none" : v >= 10 ? "g-ok" : v >= 8 ? "g-warn" : "g-bad");
-const ordinal = (n) => (n === 1 ? "1er" : `${n}e`);
 const notesData = (sem) => api(`/api/notes${sem ? `?semestre=${sem}` : ""}`, { source: "notes", maxAge: 600000 });
-
-// Pastille de rang, réutilisée partout : podium or / argent / bronze (avec icône), puis bleu.
-function rankPill(rang, total) {
-  if (rang == null || !total) return "";
-  const tier = rang <= 3 ? `r${rang}` : "rn";
-  const icon = rang === 1 ? ICON.trophy : rang <= 3 ? ICON.medal : "";
-  return `<span class="rank ${tier}" title="Rang ${rang} sur ${total}" aria-label="Rang : ${ordinal(rang)} sur ${total}">${icon}${ordinal(rang)} / ${total}</span>`;
-}
 
 // Évaluations déjà vues (localStorage, facultatif). Au tout premier affichage, seules les notes
 // récentes comptent comme nouvelles : on ne signale pas tout l'historique.
@@ -1161,7 +757,7 @@ function bindNotesLogin(root, after) {
       const data = await r.json();
       if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
       f.password.value = "";
-      window.__me = await fetch("/api/me").then((x) => x.json());
+      state.me = await fetch("/api/me").then((x) => x.json());
       delete store["/api/notes"];
       after();
     } catch (e) {
@@ -1320,10 +916,10 @@ async function viewNotes() {
 
 /* ── Vue : Mails ───────────────────────────────────────── */
 async function viewMails() {
-  main.innerHTML = `<header class="head"><div><h1>Mails</h1><p>${esc(window.__me.mail)}</p></div><div class="toolbar" id="mail-tools"></div></header><div id="mails">${skel(8)}</div>`;
+  main.innerHTML = `<header class="head"><div><h1>Mails</h1><p>${esc(state.me.mail)}</p></div><div class="toolbar" id="mail-tools"></div></header><div id="mails">${skel(8)}</div>`;
   try {
     const m = await mailsData();
-    window.__webmail = m.webmail;
+    state.webmail = m.webmail;
     $("#mail-tools").innerHTML = `<a class="btn" href="${esc(m.webmail)}" target="_blank" rel="noopener">${ICON.ext}Ouvrir Outlook</a>
       <button class="btn ghost" type="button" id="mail-out">Déconnecter</button>`;
     $("#mail-out").addEventListener("click", async () => {
@@ -1357,9 +953,9 @@ function route() {
 $("#refresh").addEventListener("click", async () => {
   const b = $("#refresh");
   b.classList.add("spin");
-  forceNext = true;
+  setForceNext(true);
   try { await route(); badges(); } finally {
-    forceNext = false;
+    setForceNext(false);
     setTimeout(() => b.classList.remove("spin"), 600);
   }
 });
@@ -1375,19 +971,10 @@ setInterval(() => {
 }, 60000);
 
 
-/* ── Envoi JSON commun (connexion, réglages) ───────────── */
-async function postJSON(path, body) {
-  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-  const data = await r.json().catch(() => ({ error: `Réponse illisible (HTTP ${r.status})` }));
-  if (!r.ok || data.error) throw Object.assign(new Error(data.error || `HTTP ${r.status}`), { code: data.code });
-  return data;
-}
-const refreshMe = async () => { window.__me = await fetch("/api/me").then((x) => x.json()); return window.__me; };
-const dropStore = (...prefixes) => Object.keys(store).forEach((k) => { if (prefixes.some((p) => k.startsWith(p))) delete store[k]; });
 
 /* ── Connexion : assistant au premier lancement, sinon écran simple ── */
 function showAuth(message) {
-  if ((window.__me || {}).setup) return showSetup();
+  if ((state.me || {}).setup) return showSetup();
   return showLogin(message);
 }
 
@@ -1430,7 +1017,7 @@ function showLogin(message) {
     <h1>Connexion</h1>
     <p>Avec ton compte de l'université.</p>
     <div class="msg" role="alert">${esc(message || "")}</div>
-    ${accountFields(window.__me)}
+    ${accountFields(state.me)}
     <button class="btn primary" type="submit">Se connecter</button>
     <p class="note">${PW_NOTE} Après un redémarrage, les notes te redemanderont ton mot de passe.</p>
   </form>`;
@@ -1510,7 +1097,7 @@ function stepsBar(n) {
 function showSetup() {
   document.body.classList.add("locked");
   const n = wizard.step;
-  const me = window.__me;
+  const me = state.me;
   const wrap = (inner) => `<div class="panel wizard">${brandHTML}${stepsBar(n)}${inner}</div>`;
   if (n === 1) {
     main.innerHTML = wrap(`<form id="login" autocomplete="off" class="wiz-body">
@@ -1556,7 +1143,7 @@ function showSetup() {
   const mailInput = $("#wiz-mail");
   const saveMail = async () => {
     const v = mailInput.value.trim();
-    if (!v || v === (window.__me.settings || {}).mail) return true;
+    if (!v || v === (state.me.settings || {}).mail) return true;
     try {
       await saveSettings({ MAIL_ADRESSE: v }, null);
       $("#wiz-mail-err").textContent = "";
@@ -1579,21 +1166,6 @@ async function finishSetup() {
   start();
 }
 
-/* ── Réglages ──────────────────────────────────────────── */
-// Enregistre tout de suite (POST /api/settings) ; le serveur valide et vide le cache concerné.
-async function saveSettings(changes, msg = "Enregistré") {
-  const data = await postJSON("/api/settings", changes).catch((e) => {
-    if (e.code === "login_required") showAuth("Ta session a expiré. Reconnecte-toi.");
-    throw e;
-  });
-  window.__me = data.me;
-  const keys = Object.keys(changes);
-  if (keys.some((k) => k === "ADE_ICAL_URL" || k === "CACHE_PLANNING")) dropStore("/api/planning");
-  if (keys.some((k) => k === "COURS_MASQUES" || k === "CACHE_MOODLE")) dropStore("/api/resources", "/api/assignments");
-  if (keys.some((k) => k === "MAIL_ADRESSE" || k === "CACHE_MAILS")) dropStore("/api/mails");
-  if (msg) toast(msg);
-  return data.me;
-}
 
 const SET_ORIGIN = { config: "vient de config.py", defaut: "valeur par défaut" };
 const originNote = (s, key) => (s.origine && SET_ORIGIN[s.origine[key]] && s.origine[key] === "config"
@@ -1603,7 +1175,7 @@ const CACHE_LABELS = { CACHE_PLANNING: "Emploi du temps", CACHE_MOODLE: "Moodle 
 function validRegex(src) { try { new RegExp(src); return ""; } catch (e) { return e.message; } }
 
 async function viewSettings() {
-  const me = window.__me;
+  const me = state.me;
   const s = me.settings || {};
   const matieres = me.matieres || [];
   main.innerHTML = `<header class="head"><div><h1>Réglages</h1>
@@ -1704,7 +1276,7 @@ async function viewSettings() {
   });
 
   // Couleurs
-  const currentList = () => (window.__me.matieres || []).map((m) => ({ ...m }));
+  const currentList = () => (state.me.matieres || []).map((m) => ({ ...m }));
   main.querySelectorAll("input[type=color]").forEach((inp) => {
     inp.addEventListener("change", () => {
       const list = currentList();
@@ -1754,7 +1326,12 @@ async function viewSettings() {
 
   // Tout effacer
   $("#wipe").addEventListener("click", async () => {
-    if (!confirm("Tout effacer de cet ordinateur ?\n\nSession, jetons Moodle et Outlook, lien ADE, couleurs et autres réglages seront supprimés. Il faudra refaire l'assistant.")) return;
+    const ok = await confirmModal({
+      title: "Tout effacer de cet ordinateur ?",
+      text: "Session, jetons Moodle et Outlook, lien ADE, couleurs et autres réglages seront supprimés. Il faudra refaire l'assistant.",
+      ok: "Tout effacer",
+    });
+    if (!ok) return;
     try {
       await postJSON("/api/reset", { confirm: true });
       try { localStorage.clear(); sessionStorage.clear(); } catch { /* sans stockage */ }
@@ -1768,50 +1345,22 @@ function start() {
   document.body.classList.remove("locked");
   Object.keys(store).forEach((k) => delete store[k]);
   setStatus("moodle", "idle");
-  if (!window.__me.sources.mail) setStatus("mail", "off");
-  if (!window.__me.sources.notes) setStatus("notes", "off");
-  if (!window.__me.sources.ade) setStatus("ade", "off");
+  if (!state.me.sources.mail) setStatus("mail", "off");
+  if (!state.me.sources.notes) setStatus("notes", "off");
+  if (!state.me.sources.ade) setStatus("ade", "off");
   syncTheme();
   route();
   badges();
 }
 
-/* ── Thème : système (par défaut), clair ou sombre. Enregistré dans les réglages ;
-      localStorage n'en garde qu'une copie pour peindre la page sans flash au chargement. ── */
-const THEME_LABEL = { system: "Thème : système", light: "Thème : clair", dark: "Thème : sombre" };
-const themeQuery = matchMedia("(prefers-color-scheme: dark)");
-function themeMode() {
-  try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") return t; } catch { /* stockage indisponible */ }
-  return "system";
-}
-function applyTheme(mode) {
-  try { if (mode === "system") localStorage.removeItem("theme"); else localStorage.setItem("theme", mode); } catch { /* stockage indisponible */ }
-  document.documentElement.dataset.theme = mode === "system" ? (themeQuery.matches ? "dark" : "light") : mode;
-  $("#theme-label").textContent = THEME_LABEL[mode];
-}
-function setTheme(mode) {
-  applyTheme(mode);
-  if ((window.__me || {}).loggedIn) saveSettings({ THEME: mode }, null).catch((e) => toast(e.message));
-}
-function syncTheme() {
-  const t = (window.__me || {}).theme;
-  if (t && t !== themeMode()) applyTheme(t);
-}
-themeQuery.addEventListener("change", () => { if (themeMode() === "system") applyTheme("system"); });
-applyTheme(themeMode());
-$("#theme").addEventListener("click", () => setTheme({ system: "light", light: "dark", dark: "system" }[themeMode()]));
-
-async function logout() {
-  await fetch("/api/logout", { method: "POST" });
-  location.hash = "";
-  location.reload();
-}
+on("auth-required", (message) => showAuth(message));
+initTheme();
 $("#logout").addEventListener("click", logout);
 
 (async function init() {
   await refreshMe();
   syncTheme();
-  if (window.__me.demo && !window.__me.setup && window.__me.loggedIn) $("#logout").hidden = true;
-  if (!window.__me.loggedIn) return showAuth();
+  if (state.me.demo && !state.me.setup && state.me.loggedIn) $("#logout").hidden = true;
+  if (!state.me.loggedIn) return showAuth();
   start();
 })();

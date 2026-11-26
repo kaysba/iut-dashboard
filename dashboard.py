@@ -44,6 +44,7 @@ settings.utiliser_config(None if DEMO else settings.charger_config())
 settings.charger(memoire_seule=DEMO)
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+STATIC_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml"}
 
 # login, prénom (lu dans Moodle) et adresse mail proposée (profil Moodle, sinon identifiant@etu.unice.fr)
 SESSION = {"ok": False, "login": "", "prenom": "", "mail": ""}
@@ -605,7 +606,10 @@ class Handler(BaseHTTPRequestHandler):
         full = os.path.normpath(os.path.join(WEB_DIR, path.lstrip("/")))
         if os.path.commonpath([full, WEB_DIR]) != WEB_DIR or not os.path.isfile(full):
             return self.send_error(404)
-        ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+        # Types fixés ici : le registre de Windows associe parfois .js à text/plain, et un navigateur
+        # refuse alors de charger les modules ES (web/js/**).
+        ext = os.path.splitext(full)[1].lower()
+        ctype = STATIC_TYPES.get(ext) or mimetypes.guess_type(full)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype.endswith("javascript"):
             ctype += "; charset=utf-8"
         with open(full, "rb") as f:

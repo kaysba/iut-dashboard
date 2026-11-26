@@ -1,0 +1,87 @@
+/* ── Structure ──────────────────────────────────────────── */
+.app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+.side {
+  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
+  padding: 22px 14px 18px; background: var(--surface); border-right: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 22px; font-weight: 600; font-size: 15px; line-height: 1.2; }
+.brand small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; }
+.brand-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--blue); position: relative; flex: none; }
+.brand-mark i { position: absolute; left: 7px; height: 4px; border-radius: 2px; background: #fff; }
+.brand-mark i:first-child { top: 9px; width: 10px; }
+.brand-mark i:last-child { top: 17px; width: 16px; background: var(--orange); }
+
+.nav { display: grid; gap: 2px; }
+.nav a {
+  display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: var(--r-sm);
+  color: var(--ink-2); font-weight: 500;
+}
+.nav a:hover { background: var(--paper); color: var(--ink); }
+.nav a[aria-current="page"] { background: var(--blue-tint); color: var(--blue-ink); }
+.nav a[aria-current="page"] svg { color: var(--blue); }
+.nav .count { margin-left: auto; font-size: 12px; font-weight: 600; min-width: 22px; padding: 1px 7px; border-radius: 20px; text-align: center; background: var(--orange); color: var(--on-orange); }
+.nav .count:empty { display: none; }
+.nav .count.calm { background: var(--line-2); color: var(--ink-2); }
+
+.side-foot { margin-top: auto; display: grid; gap: 12px; }
+.sources { list-style: none; margin: 0; padding: 12px 10px; display: grid; gap: 7px; border-top: 1px solid var(--line-2); font-size: 13px; color: var(--muted); }
+.sources li { display: flex; align-items: center; gap: 9px; }
+.sources li span { margin-left: auto; font-size: 12px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #B7C0CD; flex: none; }
+.dot.ok { background: #2BA36B; }
+.dot.err { background: var(--red); }
+.dot.wait { background: var(--orange); }
+.refresh {
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-weight: 500; font-size: 14px;
+}
+.refresh:hover { border-color: var(--border-hover); }
+.refresh.spin svg { animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.main { padding: 34px 44px 60px; width: 100%; min-width: 0; outline: none; }
+
+/* ── En-têtes de page ───────────────────────────────────── */
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 26px; flex-wrap: wrap; }
+.head h1 { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; }
+.head p { margin: 6px 0 0; color: var(--muted); }
+.head .next { color: var(--ink-2); }
+.head .next strong { color: var(--ink); font-weight: 600; }
+.h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+.h2 h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.h2 a, .linkish { color: var(--blue); font-weight: 500; font-size: 14px; }
+.h2 a:hover, .linkish:hover { text-decoration: underline; }
+
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.side-foot .btn.ghost { color: var(--muted); justify-content: center; }
+.side-foot .btn.ghost:hover { color: var(--ink); background: var(--paper); }
+
+/* ── Lien Réglages (barre latérale) ─────────────────────── */
+.side-link {
+  display: flex; align-items: center; justify-content: center; gap: 9px; padding: 8px 10px; border-radius: var(--r-sm);
+  color: var(--muted); font-weight: 500; font-size: 14px;
+}
+.side-link:hover { color: var(--ink); background: var(--paper); }
+.side-link[aria-current="page"] { background: var(--blue-tint); color: var(--blue-ink); }
+.side-link svg { width: 16px; height: 16px; }
+.nav .only-mobile { display: none; }
+@media (max-width: 760px) {
+  .nav .only-mobile { display: flex; }
+}
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; }
+  .side { position: fixed; bottom: 0; top: auto; height: auto; width: 100%; z-index: 10; flex-direction: row; padding: 6px; border-right: 0; border-top: 1px solid var(--line); }
+  .brand, .side-foot { display: none; }
+  .nav { grid-auto-flow: column; width: 100%; }
+  .nav a { flex-direction: column; gap: 3px; font-size: 11.5px; padding: 6px 2px; position: relative; }
+  .nav .count { position: absolute; top: 2px; right: 18%; font-size: 10.5px; min-width: 0; padding: 0 5px; }
+  .main { padding: 22px 16px 96px; }
+  .head h1 { font-size: 25px; }
+}
+
+/* ── Écrans sans barre latérale (connexion, assistant) ──── */
+.locked .side { display: none; }
+.locked .app { grid-template-columns: 1fr; }
+.locked .main { max-width: none; padding: 0 20px; }

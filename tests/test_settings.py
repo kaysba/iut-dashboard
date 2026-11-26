@@ -486,7 +486,7 @@ class LancementTest(unittest.TestCase):
         self.assertFalse(me["loggedIn"])
         st, page = self.get(port, "/")
         self.assertEqual(st, 200)
-        self.assertIn(b"app.js", page)
+        self.assertIn(b"/js/main.js", page)
         proc.kill()
         _, err = proc.communicate()
         self.assertNotIn("Traceback", err)

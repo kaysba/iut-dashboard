@@ -1,0 +1,43 @@
+/* ── Assistant de premier lancement ─────────────────────── */
+.wizard { font-feature-settings: "ss01" 1; }
+.wizard label { display: block; font-weight: 500; font-size: 14px; margin-bottom: 14px; }
+.wizard input:not([type=checkbox]) {
+  display: block; width: 100%; font: inherit; padding: 9px 12px; color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface);
+}
+.wizard label > input:not([type=checkbox]) { margin-top: 6px; padding: 10px 12px; }
+.wizard input:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-tint); }
+.wizard .remember { display: flex; align-items: center; gap: 9px; font-weight: 400; margin: 2px 0 10px; cursor: pointer; }
+.wizard .remember input { width: 17px; height: 17px; margin: 0; accent-color: var(--blue); }
+.wizard .msg { margin: 0 0 14px; padding: 9px 12px; border-radius: var(--r-sm); background: var(--err-bg); border: 1px solid var(--err-line); color: var(--err-ink); font-size: 14px; }
+.wizard .msg:empty { display: none; }
+.wizard code { font-size: 13px; background: var(--paper); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+.wizard li::marker { font-feature-settings: "ss01" 1; }
+
+.wizard { max-width: 560px; margin: 8vh auto 40px; padding: 28px 32px 24px; }
+.wizard .brand { padding: 0 0 20px; }
+.steps { list-style: none; display: flex; gap: 8px; margin: 0 0 24px; padding: 0; counter-reset: none; }
+.steps li { flex: 1; display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 3px solid var(--line); color: var(--muted); font-size: 13px; font-weight: 500; min-width: 0; }
+.steps li b { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--line-2); color: var(--ink-2); font-size: 12px; }
+.steps li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.steps li.current { border-color: var(--blue); color: var(--ink); }
+.steps li.current b { background: var(--blue); color: var(--on-accent); }
+.steps li.done { border-color: var(--green); color: var(--ink-2); }
+.steps li.done b { background: var(--green-tint); color: var(--green); }
+.wiz-body h1 { margin: 0 0 6px; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.wiz-body h1 .opt { font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.wiz-body .lead { margin: 0 0 20px; color: var(--ink-2); }
+.wiz-body .hint { margin: 0 0 4px; font-size: 13.5px; color: var(--muted); }
+.wiz-body .note { margin: 16px 0 0; font-size: 13px; color: var(--muted); }
+.wiz-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line-2); }
+.wiz-foot .btn.primary { padding: 9px 20px; }
+.wiz-foot .btn.ghost { color: var(--muted); }
+.wiz-foot .btn.ghost:hover { color: var(--ink); background: var(--paper); }
+.wiz-foot .btn.primary { margin-left: auto; }
+
+@media (max-width: 760px) {
+  .wizard { margin: 16px auto 24px; padding: 22px 18px 18px; }
+  .steps li span { display: none; }
+  .steps li.current span { display: inline; }
+  .wizard .brand { display: flex; }
+}

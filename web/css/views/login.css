@@ -1,0 +1,22 @@
+/* ── Connexion ──────────────────────────────────────────── */
+.login { max-width: 400px; margin: 14vh auto 0; padding: 30px 30px 26px; }
+.login .brand { padding: 0 0 22px; }
+.login h1 { margin: 0 0 4px; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; }
+.login > p { margin: 0 0 22px; color: var(--muted); }
+.login label { display: block; font-weight: 500; font-size: 14px; margin-bottom: 14px; }
+.login input {
+  display: block; width: 100%; margin-top: 6px; font: inherit; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface);
+}
+.login input:focus { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-tint); }
+.login .btn { width: 100%; justify-content: center; padding: 10px; margin-top: 6px; }
+.login .note { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.login .msg { margin: 0 0 14px; padding: 9px 12px; border-radius: var(--r-sm); background: var(--err-bg); border: 1px solid var(--err-line); color: var(--err-ink); font-size: 14px; }
+.login .msg:empty { display: none; }
+.login .remember { display: flex; align-items: center; gap: 9px; font-weight: 400; margin: 2px 0 6px; cursor: pointer; }
+.login .remember input { width: 17px; height: 17px; margin: 0; padding: 0; accent-color: var(--blue); }
+.login { font-feature-settings: "ss01" 1; }
+
+@media (max-width: 760px) {
+  .login .brand { display: flex; }
+}
