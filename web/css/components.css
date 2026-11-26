@@ -199,7 +199,7 @@
 .modal-head .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .modal-body { padding: 18px 20px 22px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.6; color: var(--ink-2); }
 body.modal-open { overflow: hidden; }
-.modal.confirm { width: min(460px, 100%); }
+.modal.confirm { width: min(460px, 100%); font-feature-settings: "ss01" 1; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding: 12px 20px 16px; border-top: 1px solid var(--line-2); }
 
 /* Pastille de rang : le podium se reconnaît à la couleur ET à l'icône */

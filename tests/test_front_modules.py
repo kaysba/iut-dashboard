@@ -132,8 +132,6 @@ class ModulesTest(unittest.TestCase):
     def test_taille_des_fichiers(self):
         for f in js_files():
             n = read(f).count("\n")
-            if rel(f) == "main.js":
-                continue   # temps 1 : le reste de l'ancien app.js est encore dans main.js
             self.assertLessEqual(n, 330 if rel(f) == "features/depot/panel.js" else 300, rel(f))
 
     def test_css_sans_import_et_variables_dans_tokens(self):
