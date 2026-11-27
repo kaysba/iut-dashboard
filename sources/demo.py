@@ -384,7 +384,7 @@ def _releve_demo(num):
     modules, mod_moy = [], {}
     for code, titre, typ, _, evals in _MODULES[num]:
         evs = [{"id": num * 1000 + len(modules) * 10 + i, "titre": t,
-                "date": (today - dt.timedelta(days=d)).isoformat(), "coef": c, "note": n,
+                "date": (today - dt.timedelta(days=d)).isoformat(), "type": "normale", "etat": None, "coef": c, "note": n,
                 **_promo(n, promo), "poids": {f"UE{num}.{u}": 1 for u in _MODULES[num][len(modules)][3]}}
                for i, (t, d, n, c) in enumerate(evals)]
         moy = _avg([(e["note"], e["coef"]) for e in evs])
@@ -402,12 +402,14 @@ def _releve_demo(num):
                     **_promo(moy, promo), "bonus": 0.0, "malus": 0.0,
                     "ects_acquis": 0.0 if num == 3 else 5.0, "ects_total": 5.0, "modules": mods})
     ues[1]["bonus"] = 0.15 if num == 3 else 0.0   # un petit bonus d'UE, pour l'affichage
+    bonus = 0.1 if num == 3 else None   # venue de l'UE « bonus » du semestre, ajoutée à la moyenne générale
     sem = _avg([(u["moyenne"], 1) for u in ues])
+    sem = round(sem + (bonus or 0), 2) if sem is not None else None
     rs = rangs["sem"]
     return {"publie": True, "message": "", "options": options,
             "semestre": {"numero": num, "moyenne": sem, "rang": rs[0] if rs else None, "total": rs[1] if rs else None,
                          **_promo(sem, promo), "ects_acquis": 0.0 if num == 3 else 30.0, "ects_total": 30.0,
-                         "bonus": 0.1 if num == 3 else None,   # venue de l'UE « bonus » du semestre
+                         "bonus": bonus,
                          "absences": {"total": 3.0, "injustifiees": 1.0, "unite": "Heure(s)"} if num == 3
                          else {"total": 0.0, "injustifiees": 0.0, "unite": "Heure(s)"}},
             "ues": ues, "modules": modules}

@@ -155,6 +155,10 @@ def _int(v):
     return int(n) if n is not None else None
 
 
+# evaluation_type de ScoDoc. Une évaluation bonus n'a pas de coefficient : sa note s'ajoute à la moyenne du module.
+EVAL_TYPES = {0: "normale", 1: "rattrapage", 2: "session2", 3: "bonus"}
+
+
 def normaliser_semestres(liste):
     out = []
     for s in liste:
@@ -261,9 +265,13 @@ def normaliser_releve(rel, message=""):
             n = ev.get("note")
             n = n if isinstance(n, dict) else {"value": n}
             s = _stats(n, promo and opts.get("show_minmax_eval", True))
+            brut = n.get("value")
             evals.append({"id": ev.get("id"), "titre": ev.get("description") or "Évaluation",
                           "date": (ev.get("date_debut") or ev.get("date") or "")[:10] or None,
-                          "coef": _num(ev.get("coef")), "note": _num(n.get("value")), **s,
+                          "type": EVAL_TYPES.get(ev.get("evaluation_type"), "normale" if ev.get("evaluation_type") is None else "autre"),
+                          # note non numérique de ScoDoc (« ABS », « EXC »…) : gardée telle quelle, jamais convertie
+                          "etat": str(brut).strip() if _num(brut) is None and str(brut or "").strip() not in ("", "~") else None,
+                          "coef": _num(ev.get("coef")), "note": _num(brut), **s,
                           "poids": {k: _num(v) or 0 for k, v in (ev.get("poids") or {}).items()}})
         evals.sort(key=lambda x: (x["date"] or "", x["id"] or 0))
         modules.append({"code": code, "titre": titres.get(code, code), "type": types[code],
